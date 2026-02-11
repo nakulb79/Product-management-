@@ -34,7 +34,7 @@ codeunit 50100 "Product Management"
         TempProduct: Record Product;
     begin
         Product.Reset();
-        Product.SetRange(Blocked, false);
+        Product.SetRange(Product.Blocked, false);
         
         if Product.FindSet() then
             repeat

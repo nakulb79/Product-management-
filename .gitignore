@@ -20,3 +20,13 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+
+### Node.js ###
+node_modules/
+npm-debug.log
+*.log
+
+### Database ###
+*.db
+*.sqlite
+*.sqlite3

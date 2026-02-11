@@ -16,14 +16,34 @@ codeunit 50100 "Product Management"
     end;
 
     procedure UpdateQuantity(var Product: Record Product; QuantityChange: Decimal)
+    var
+        NewQuantity: Decimal;
     begin
-        Product."Quantity in Stock" := Product."Quantity in Stock" + QuantityChange;
+        NewQuantity := Product."Quantity in Stock" + QuantityChange;
+        if NewQuantity < 0 then
+            Error('Cannot reduce quantity below zero. Current stock: %1, Attempted change: %2',
+                Product."Quantity in Stock",
+                QuantityChange);
+
+        Product."Quantity in Stock" := NewQuantity;
         Product.Modify(true);
     end;
 
     procedure GetLowStockProducts(var Product: Record Product)
+    var
+        TempProduct: Record Product;
     begin
-        Product.SetFilter("Quantity in Stock", '<=%1', Product."Reorder Point");
+        Product.Reset();
         Product.SetRange(Blocked, false);
+        
+        if Product.FindSet() then
+            repeat
+                if Product."Quantity in Stock" <= Product."Reorder Point" then begin
+                    TempProduct := Product;
+                    TempProduct.Mark(true);
+                end;
+            until Product.Next() = 0;
+        
+        Product.MarkedOnly(true);
     end;
 }

@@ -400,11 +400,17 @@ function closePaymentModal() {
 
 async function updatePaymentStatus(paymentId, status) {
     try {
-        await fetch(`/api/payments/${paymentId}`, {
+        const response = await fetch(`/api/payments/${paymentId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ payment_status: status })
         });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update payment');
+        }
+        
         loadPayments();
         loadDashboard();
     } catch (error) {
@@ -451,11 +457,17 @@ function closeDeliveryModal() {
 
 async function updateDeliveryStatus(deliveryId, status) {
     try {
-        await fetch(`/api/deliveries/${deliveryId}`, {
+        const response = await fetch(`/api/deliveries/${deliveryId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ delivery_status: status })
         });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update delivery');
+        }
+        
         loadDeliveries();
         loadDashboard();
     } catch (error) {
@@ -587,11 +599,17 @@ function setupForms() {
         };
         
         try {
-            await fetch('/api/deliveries', {
+            const response = await fetch('/api/deliveries', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to create delivery');
+            }
+            
             closeDeliveryModal();
             loadDeliveries();
             loadDashboard();

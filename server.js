@@ -85,6 +85,14 @@ app.post('/api/products', async (req, res) => {
       return res.status(400).json({ error: 'Name, price, and cost are required' });
     }
 
+    if (price <= 0 || cost <= 0) {
+      return res.status(400).json({ error: 'Price and cost must be positive numbers' });
+    }
+
+    if (price < cost) {
+      return res.status(400).json({ error: 'Warning: Price is less than cost. This will result in losses.' });
+    }
+
     const productId = uuidv4();
     const stockId = uuidv4();
 
@@ -110,10 +118,18 @@ app.put('/api/products/:id', async (req, res) => {
   try {
     const { name, description, price, cost, category } = req.body;
     
-    await dbRun(
+    if (price <= 0 || cost <= 0) {
+      return res.status(400).json({ error: 'Price and cost must be positive numbers' });
+    }
+
+    const result = await dbRun(
       'UPDATE products SET name = ?, description = ?, price = ?, cost = ?, category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [name, description, price, cost, category, req.params.id]
     );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
 
     const product = await dbGet('SELECT * FROM products WHERE id = ?', [req.params.id]);
     res.json(product);
@@ -234,11 +250,11 @@ app.post('/api/payments', async (req, res) => {
 // Update payment
 app.put('/api/payments/:id', async (req, res) => {
   try {
-    const { payment_status, notes } = req.body;
+    const { amount, payment_method, payment_status, customer_name, customer_email, notes } = req.body;
     
     await dbRun(
-      'UPDATE payments SET payment_status = ?, notes = ? WHERE id = ?',
-      [payment_status, notes, req.params.id]
+      'UPDATE payments SET amount = COALESCE(?, amount), payment_method = COALESCE(?, payment_method), payment_status = COALESCE(?, payment_status), customer_name = COALESCE(?, customer_name), customer_email = COALESCE(?, customer_email), notes = COALESCE(?, notes) WHERE id = ?',
+      [amount, payment_method, payment_status, customer_name, customer_email, notes, req.params.id]
     );
 
     const payment = await dbGet('SELECT * FROM payments WHERE id = ?', [req.params.id]);
@@ -325,6 +341,20 @@ app.post('/api/deliveries', async (req, res) => {
 
     // Add delivery items and update stock
     for (const item of items) {
+      // Check if sufficient stock exists
+      const stock = await dbGet('SELECT quantity FROM stock WHERE product_id = ?', [item.product_id]);
+      
+      if (!stock) {
+        return res.status(400).json({ error: `Product ${item.product_id} not found in stock` });
+      }
+      
+      if (stock.quantity < item.quantity) {
+        const product = await dbGet('SELECT name FROM products WHERE id = ?', [item.product_id]);
+        return res.status(400).json({ 
+          error: `Insufficient stock for ${product ? product.name : 'product'}. Available: ${stock.quantity}, Requested: ${item.quantity}` 
+        });
+      }
+
       const itemId = uuidv4();
       await dbRun(
         'INSERT INTO delivery_items (id, delivery_id, product_id, quantity) VALUES (?, ?, ?, ?)',

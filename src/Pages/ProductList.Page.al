@@ -72,8 +72,7 @@ page 50100 "Product List"
                     Product: Record Product;
                 begin
                     Product.Init();
-                    Product.Insert(true);
-                    Page.Run(Page::"Product Card", Product);
+                    Page.RunModal(Page::"Product Card", Product);
                 end;
             }
         }

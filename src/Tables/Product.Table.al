@@ -79,4 +79,9 @@ table 50100 "Product"
     begin
         "Last Date Modified" := Today;
     end;
+
+    trigger OnRename()
+    begin
+        "Last Date Modified" := Today;
+    end;
 }

@@ -1,6 +1,6 @@
 codeunit 50100 "Product Management"
 {
-    procedure CheckInventoryLevel(var Product: Record Product)
+    procedure CheckInventoryLevel(Product: Record Product)
     begin
         if Product."Quantity in Stock" <= Product."Reorder Point" then
             Message('Product %1 - %2 is below reorder point. Current stock: %3, Reorder point: %4',
@@ -25,23 +25,21 @@ codeunit 50100 "Product Management"
                 Product."Quantity in Stock",
                 QuantityChange);
 
-        Product."Quantity in Stock" := NewQuantity;
+        Product.Validate("Quantity in Stock", NewQuantity);
         Product.Modify(true);
     end;
 
     procedure GetLowStockProducts(var Product: Record Product)
-    var
-        TempProduct: Record Product;
     begin
         Product.Reset();
-        Product.SetRange(Product.Blocked, false);
+        Product.MarkedOnly(false);
+        Product.ClearMarks();
+        Product.SetRange(Blocked, false);
         
         if Product.FindSet() then
             repeat
-                if Product."Quantity in Stock" <= Product."Reorder Point" then begin
-                    TempProduct := Product;
-                    TempProduct.Mark(true);
-                end;
+                if Product."Quantity in Stock" <= Product."Reorder Point" then
+                    Product.Mark(true);
             until Product.Next() = 0;
         
         Product.MarkedOnly(true);

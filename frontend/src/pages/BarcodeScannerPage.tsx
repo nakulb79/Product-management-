@@ -4,6 +4,7 @@ import api from '../api/api';
 import { Product, ProductListResponse } from '../types';
 import { useCart } from '../context/CartContext';
 import { getErrorMessage } from '../utils/getErrorMessage';
+import { navigateTo } from '../utils/navigation';
 
 function BarcodeScannerPage() {
   const [scanResult, setScanResult] = useState<string | null>(null);
@@ -191,32 +192,24 @@ function BarcodeScannerPage() {
 
   const handleEditProduct = () => {
     if (product) {
-      const url = `/products?edit=${product._id}`;
-      window.history.pushState({}, '', url);
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      navigateTo(`/products?edit=${product._id}`);
     }
   };
 
   const handleStockPurchase = () => {
     if (product) {
-      const url = `/purchases?productId=${product._id}`;
-      window.history.pushState({}, '', url);
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      navigateTo(`/purchases?productId=${product._id}`);
     }
   };
 
   const handleStockAdjustment = () => {
     if (product) {
-      const url = `/stock-adjustments?productId=${product._id}`;
-      window.history.pushState({}, '', url);
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      navigateTo(`/stock-adjustments?productId=${product._id}`);
     }
   };
 
   const handleCreateProduct = () => {
-    const url = `/products?barcode=${scanResult}`;
-    window.history.pushState({}, '', url);
-    window.dispatchEvent(new PopStateEvent('popstate'));
+    navigateTo(`/products?barcode=${scanResult}`);
   };
 
   const resetScanner = () => {

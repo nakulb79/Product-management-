@@ -385,7 +385,7 @@ tr:hover td { background-color: #fbfdff; }
 
 .history-filters input, .history-filters select {
   min-height: 48px;
-  border-radius: var(--radius-md) !important;
+  border-radius: var(--radius-md);
 }
 
 /* Login Page */
@@ -428,7 +428,7 @@ tr:hover td { background-color: #fbfdff; }
 
 .password-container input {
   flex: 1;
-  padding-right: 3rem !important;
+  padding-right: 3rem;
 }
 
 .password-toggle {

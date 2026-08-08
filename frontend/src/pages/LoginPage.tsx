@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ErrorBanner } from '../components/Banner';
 import { getErrorMessage } from '../utils/getErrorMessage';
+import { navigateTo } from '../utils/navigation';
 
 function LoginPage() {
   const { login } = useAuth();
@@ -17,8 +18,7 @@ function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      window.history.pushState({}, '', '/dashboard');
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      navigateTo('/dashboard');
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Invalid credentials. Please try again.'));
     } finally {

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Category } from '../models/Category';
 import { Product } from '../models/Product';
+import { buildPaginationMeta, parsePagination } from '../utils/pagination';
 
 type ProductFilters = {
   status?: 'active' | 'inactive';
@@ -38,8 +39,7 @@ const generateUniqueSku = async (name: string): Promise<string> => {
 };
 
 export const getProducts = async (req: AuthenticatedRequest, res: Response) => {
-  const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const { page, limit, skip } = parsePagination(req.query);
   const search = (req.query.search as string | undefined)?.trim();
   const barcode = (req.query.barcode as string | undefined)?.trim();
   const status = req.query.status as 'active' | 'inactive' | undefined;
@@ -65,19 +65,14 @@ export const getProducts = async (req: AuthenticatedRequest, res: Response) => {
     Product.find(filter)
       .populate('category', 'name slug')
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit),
     Product.countDocuments(filter)
   ]);
 
   res.json({
     data: items,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.max(Math.ceil(total / limit), 1)
-    }
+    pagination: buildPaginationMeta(page, limit, total)
   });
 };
 

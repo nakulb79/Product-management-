@@ -6,6 +6,7 @@ import { printInvoiceReceipt } from '../utils/invoice';
 import ScannerPanel from '../components/ScannerPanel';
 import { ErrorBanner } from '../components/Banner';
 import { getErrorMessage } from '../utils/getErrorMessage';
+import { navigateTo } from '../utils/navigation';
 
 function SalesPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -71,8 +72,7 @@ function SalesPage() {
   };
 
   const goCreateProductFromScan = () => {
-    window.history.pushState({}, '', `/products?barcode=${unknownBarcode}`);
-    window.dispatchEvent(new PopStateEvent('popstate'));
+    navigateTo(`/products?barcode=${unknownBarcode}`);
   };
 
   const discountAmount = Math.max(Number(discount || 0), 0);

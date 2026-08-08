@@ -35,6 +35,16 @@ export const createCategorySchema = z
   })
   .strict();
 
+export const updateCategorySchema = z
+  .object({
+    name: nonEmptyString.optional(),
+    slug: nonEmptyString.optional(),
+    description: optionalString,
+    parent: objectId.nullable().optional(),
+    status: z.enum(['active', 'inactive']).optional()
+  })
+  .strict();
+
 // Products
 
 const productFields = {

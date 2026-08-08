@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { DailySalesSummary, Dashboard, ProfitSummary } from '../types';
 import TableStatusRow from '../components/TableStatusRow';
+import { navigateTo } from '../utils/navigation';
 
 type RevenuePoint = {
   day: string;
@@ -104,10 +105,7 @@ function DashboardPage() {
         <button
           type="button"
           className="card"
-          onClick={() => {
-            window.history.pushState({}, '', '/reorder');
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }}
+          onClick={() => navigateTo('/reorder')}
           style={{ textAlign: 'left', cursor: 'pointer', border: 'none', width: '100%' }}
           title="View the reorder list"
         >

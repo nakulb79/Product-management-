@@ -5,6 +5,7 @@ import { parseCsv } from '../utils/csv';
 import { ErrorBanner, SuccessBanner } from '../components/Banner';
 import TableStatusRow from '../components/TableStatusRow';
 import { getErrorMessage } from '../utils/getErrorMessage';
+import { navigateTo } from '../utils/navigation';
 
 type BulkImportFailure = { row: number; name: string; error: string };
 type BulkImportResult = { createdCount: number; failedCount: number; failures: BulkImportFailure[] };
@@ -207,8 +208,7 @@ function ProductManagementPage() {
         const cameFromScanner = fromScanner;
         resetForm();
         if (cameFromScanner) {
-          window.history.pushState({}, '', '/scanner');
-          window.dispatchEvent(new PopStateEvent('popstate'));
+          navigateTo('/scanner');
           return;
         }
         setNotice('Product created successfully.');
@@ -412,10 +412,7 @@ function ProductManagementPage() {
               type="button"
               className="btn btn-outline"
               style={{ margin: '0 0.5rem', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-              onClick={() => {
-                window.history.pushState({}, '', '/categories');
-                window.dispatchEvent(new PopStateEvent('popstate'));
-              }}
+              onClick={() => navigateTo('/categories')}
             >
               Create a category
             </button> 
@@ -665,8 +662,7 @@ function ProductManagementPage() {
                   const cameFromScanner = fromScanner;
                   resetForm();
                   if (cameFromScanner) {
-                    window.history.pushState({}, '', '/scanner');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
+                    navigateTo('/scanner');
                   }
                 }}
               >

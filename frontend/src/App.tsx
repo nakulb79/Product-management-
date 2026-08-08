@@ -10,13 +10,18 @@ import StockAdjustmentsPage from './pages/StockAdjustmentsPage';
 import BarcodeScannerPage from './pages/BarcodeScannerPage';
 import ReorderPage from './pages/ReorderPage';
 import LoginPage from './pages/LoginPage';
+import NotFoundPage from './pages/NotFoundPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider, useCart } from './context/CartContext';
 import './styles.css';
 
-type AppRoute = '/dashboard' | '/sales' | '/sales/history' | '/products' | '/categories' | '/purchases' | '/expenses' | '/stock-adjustments' | '/scanner' | '/reorder' | '/login';
+type AppRoute = '/dashboard' | '/sales' | '/sales/history' | '/products' | '/categories' | '/purchases' | '/expenses' | '/stock-adjustments' | '/scanner' | '/reorder' | '/login' | '/not-found';
+
+const OWNER_ONLY_ROUTES: AppRoute[] = ['/products', '/categories', '/purchases'];
 
 const normalizePath = (path: string): AppRoute => {
+  if (path === '/' || path === '') return '/dashboard';
+  if (path === '/dashboard') return '/dashboard';
   if (path === '/sales') return '/sales';
   if (path === '/sales/history') return '/sales/history';
   if (path === '/products') return '/products';
@@ -27,7 +32,7 @@ const normalizePath = (path: string): AppRoute => {
   if (path === '/scanner') return '/scanner';
   if (path === '/reorder') return '/reorder';
   if (path === '/login') return '/login';
-  return '/dashboard';
+  return '/not-found';
 };
 
 function AppShell() {
@@ -61,6 +66,15 @@ function AppShell() {
   // move them to the dashboard so the main content appears.
   useEffect(() => {
     if (!loading && user && route === '/login') {
+      window.history.replaceState({}, '', '/dashboard');
+      setRoute('/dashboard');
+    }
+  }, [loading, user, route]);
+
+  // Owner-only routes are reachable by typing/bookmarking the URL directly,
+  // bypassing the nav bar (which already hides these links from non-owners).
+  useEffect(() => {
+    if (!loading && user && user.role !== 'owner' && OWNER_ONLY_ROUTES.includes(route)) {
       window.history.replaceState({}, '', '/dashboard');
       setRoute('/dashboard');
     }
@@ -183,6 +197,7 @@ function AppShell() {
         {route === '/expenses' && <ExpensesPage />}
         {route === '/stock-adjustments' && <StockAdjustmentsPage />}
         {route === '/reorder' && <ReorderPage />}
+        {route === '/not-found' && <NotFoundPage />}
       </main>
     </>
   );

@@ -9,7 +9,7 @@ import {
   getLowStockProducts
 } from '../controllers/productsController';
 import { getPayments, createPayment, updatePayment } from '../controllers/paymentsController';
-import { createCategory, getCategories, getCategoryById } from '../controllers/categoriesController';
+import { createCategory, getCategories, getCategoryById, updateCategory } from '../controllers/categoriesController';
 import { getDeliveries, createDelivery, updateDelivery } from '../controllers/deliveriesController';
 import { createSale, getSales, getSaleById, getDailySalesSummary, getWeeklySalesSummary, getSaleInvoice, voidSale } from '../controllers/salesController';
 import { getDashboard } from '../controllers/dashboardController';
@@ -30,6 +30,7 @@ import {
   createPurchaseSchema,
   createSaleSchema,
   createStockAdjustmentSchema,
+  updateCategorySchema,
   updateDeliverySchema,
   updatePaymentSchema,
   updateProductSchema,
@@ -68,6 +69,13 @@ router.get('/stock/alerts/low', asyncHandler(getLowStockProducts));
 router.post('/categories', asyncHandler(authorizeRoles('owner')), validateBody(createCategorySchema), asyncHandler(createCategory));
 router.get('/categories', asyncHandler(getCategories));
 router.get('/categories/:id', validateObjectId('id'), asyncHandler(getCategoryById));
+router.put(
+  '/categories/:id',
+  asyncHandler(authorizeRoles('owner')),
+  validateObjectId('id'),
+  validateBody(updateCategorySchema),
+  asyncHandler(updateCategory)
+);
 
 router.post('/sales', asyncHandler(authorizeRoles('owner', 'staff')), validateBody(createSaleSchema), asyncHandler(createSale));
 router.get('/sales', asyncHandler(authorizeRoles('owner', 'staff')), asyncHandler(getSales));

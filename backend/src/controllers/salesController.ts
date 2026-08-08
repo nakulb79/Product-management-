@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Product } from '../models/Product';
 import { Sale } from '../models/Sale';
 import { toErrorMessage } from '../utils/errors';
+import { buildPaginationMeta, parsePagination } from '../utils/pagination';
 
 const makeInvoiceNumber = () => `INV-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`;
 
@@ -108,17 +109,16 @@ export const createSale = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const getSales = async (req: AuthenticatedRequest, res: Response) => {
-  const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const { page, limit, skip } = parsePagination(req.query);
 
   const [items, total] = await Promise.all([
-    Sale.find().sort({ createdAt: -1 }).populate('createdBy', 'name').skip((page - 1) * limit).limit(limit),
+    Sale.find().sort({ createdAt: -1 }).populate('createdBy', 'name').skip(skip).limit(limit),
     Sale.countDocuments()
   ]);
 
   res.json({
     data: items,
-    pagination: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) }
+    pagination: buildPaginationMeta(page, limit, total)
   });
 };
 

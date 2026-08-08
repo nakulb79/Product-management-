@@ -5,13 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { ErrorBanner } from '../components/Banner';
 import TableStatusRow from '../components/TableStatusRow';
 import { getErrorMessage } from '../utils/getErrorMessage';
+import { navigateTo } from '../utils/navigation';
 
 const parseCategoryName = (category: Product['category']) => (typeof category === 'string' ? category : category?.name || 'Unknown');
-
-const goTo = (url: string) => {
-  window.history.pushState({}, '', url);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-};
 
 function ReorderPage() {
   const { user } = useAuth();
@@ -91,7 +87,7 @@ function ReorderPage() {
                           <button
                             type="button"
                             className="btn btn-primary"
-                            onClick={() => goTo(`/purchases?productId=${product._id}`)}
+                            onClick={() => navigateTo(`/purchases?productId=${product._id}`)}
                             style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
                           >
                             Restock
@@ -100,7 +96,7 @@ function ReorderPage() {
                           <button
                             type="button"
                             className="btn btn-light"
-                            onClick={() => goTo(`/stock-adjustments?productId=${product._id}`)}
+                            onClick={() => navigateTo(`/stock-adjustments?productId=${product._id}`)}
                             style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
                           >
                             Adjust Stock

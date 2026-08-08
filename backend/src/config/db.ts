@@ -31,7 +31,10 @@ export const connectDb = async (mongoUri: string): Promise<void> => {
   }
 
   try {
-    const conn = await mongoose.connect(mongoUri);
+    // Serverless cold starts can pile up requests before the connection is ready;
+    // failing fast (instead of Mongoose's default buffering) surfaces that as a
+    // clear connection error rather than a request hanging until timeout.
+    const conn = await mongoose.connect(mongoUri, { bufferCommands: false });
     await assertTransactionsSupported(conn);
     cachedConnection = conn;
     console.log('MongoDB connected');

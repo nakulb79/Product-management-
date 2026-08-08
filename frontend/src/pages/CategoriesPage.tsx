@@ -34,7 +34,7 @@ function CategoriesPage() {
     try {
       const response = await api.get<Category[]>('/categories');
       setCategories(response.data);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load categories.'));
     } finally {
       setLoading(false);
@@ -87,7 +87,7 @@ function CategoriesPage() {
       }
       resetForm();
       await fetchCategories();
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to save category.'));
     }
   };

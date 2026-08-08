@@ -36,7 +36,7 @@ function ExpensesPage() {
     setLoading(true);
     try {
       await loadExpenses(clamped);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load expenses'));
     } finally {
       setLoading(false);
@@ -48,7 +48,7 @@ function ExpensesPage() {
       setLoading(true);
       try {
         await loadExpenses(1);
-      } catch (requestError: any) {
+      } catch (requestError) {
         setError(getErrorMessage(requestError, 'Failed to load expenses'));
       } finally {
         setLoading(false);
@@ -94,7 +94,7 @@ function ExpensesPage() {
       setNotes('');
       setNotice('Expense added successfully.');
       await loadExpenses(1);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to create expense.'));
     } finally {
       setLoading(false);

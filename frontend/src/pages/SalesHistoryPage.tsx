@@ -48,7 +48,7 @@ function SalesHistoryPage() {
     try {
       const response = await api.get<SalesListResponse>('/sales', { params: { page: 1, limit: 200 } });
       setSales(response.data.data);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load sales history.'));
     } finally {
       setLoading(false);
@@ -161,7 +161,7 @@ function SalesHistoryPage() {
       await api.post(`/sales/${sale._id}/void`, { reason });
       await loadSales();
       if (selectedSale?._id === sale._id) setSelectedSale(null);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to void sale.'));
     } finally {
       setVoidingId(null);
@@ -175,7 +175,7 @@ function SalesHistoryPage() {
     try {
       const response = await api.get<InvoiceData>(`/sales/${saleId}/invoice`);
       setInvoiceData(response.data);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setInvoiceError(getErrorMessage(requestError, 'Failed to load invoice.'));
     } finally {
       setInvoiceLoading(false);

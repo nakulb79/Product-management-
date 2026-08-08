@@ -63,24 +63,25 @@ function BarcodeScannerPage() {
         onScanSuccess,
         onScanFailure
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error('Scanner error:', err);
       let userMessage = 'Unable to start camera. Please ensure no other app is using it and try again.';
-      
+
       // html5-qrcode wraps the error in a string sometimes, or it could be an Error object
       const errorString = String(err).toLowerCase();
-      
+      const errorName = err instanceof Error ? err.name : '';
+
       if (
-        errorString.includes('notallowederror') || 
+        errorString.includes('notallowederror') ||
         errorString.includes('permission denied') ||
         errorString.includes('permission dismissed') ||
-        err.name === 'NotAllowedError'
+        errorName === 'NotAllowedError'
       ) {
         userMessage = 'Camera blocked. Please click the padlock icon (🔒) in your address bar and allow camera access.';
       } else if (
-        errorString.includes('notfounderror') || 
+        errorString.includes('notfounderror') ||
         errorString.includes('devicesnotfound') ||
-        err.name === 'NotFoundError'
+        errorName === 'NotFoundError'
       ) {
         userMessage = 'No camera device found on this device.';
       }
@@ -161,14 +162,14 @@ function BarcodeScannerPage() {
       } else {
         setError('Product not found in database.');
       }
-    } catch (err: any) {
+    } catch (err) {
       setError('Failed to check product. ' + getErrorMessage(err, 'Unknown error'));
     } finally {
       setLoading(false);
     }
   }
 
-  function onScanFailure(error: any) {
+  function onScanFailure(_error: unknown) {
     // Expected behavior, don't show errors
   }
 

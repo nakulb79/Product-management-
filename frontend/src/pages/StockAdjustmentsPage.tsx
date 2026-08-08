@@ -41,7 +41,7 @@ function StockAdjustmentsPage() {
     setError('');
     try {
       await loadAdjustments(clamped);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load stock adjustments.'));
     } finally {
       setLoading(false);
@@ -60,7 +60,7 @@ function StockAdjustmentsPage() {
           setProductId(pid);
           setNotice('Product pre-selected from scanner.');
         }
-      } catch (requestError: any) {
+      } catch (requestError) {
         setError(getErrorMessage(requestError, 'Failed to load stock adjustments.'));
       } finally {
         setLoading(false);
@@ -96,7 +96,7 @@ function StockAdjustmentsPage() {
       setNotes('');
       setReason('count_correction');
       await loadData(1);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to adjust stock.'));
     } finally {
       setLoading(false);

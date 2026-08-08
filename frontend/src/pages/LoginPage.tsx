@@ -19,7 +19,7 @@ function LoginPage() {
       await login(email, password);
       window.history.pushState({}, '', '/dashboard');
       window.dispatchEvent(new PopStateEvent('popstate'));
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Invalid credentials. Please try again.'));
     } finally {
       setLoading(false);

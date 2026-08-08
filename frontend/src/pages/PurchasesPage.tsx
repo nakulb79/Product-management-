@@ -42,7 +42,7 @@ function PurchasesPage() {
     setError('');
     try {
       await Promise.all([loadProducts(), loadPurchases(1)]);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load purchases module.'));
     } finally {
       setLoading(false);
@@ -56,7 +56,7 @@ function PurchasesPage() {
     setError('');
     try {
       await loadPurchases(clamped);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load purchases.'));
     } finally {
       setLoading(false);
@@ -75,7 +75,7 @@ function PurchasesPage() {
           setDraftItem(prev => ({ ...prev, productId }));
           setNotice('Product pre-selected from scanner.');
         }
-      } catch (requestError: any) {
+      } catch (requestError) {
         setError(getErrorMessage(requestError, 'Failed to load purchases module.'));
       } finally {
         setLoading(false);
@@ -139,7 +139,7 @@ function PurchasesPage() {
       setSupplierName('');
       setItems([]);
       await Promise.all([loadPurchases(1), loadProducts()]);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to create purchase.'));
     } finally {
       setLoading(false);
@@ -209,7 +209,7 @@ function PurchasesPage() {
                 />
               </label>
 
-              <button type="button" className="btn btn-primary" onClick={addItem} style={{ padding: '0.625rem' }}>
+              <button type="button" className="btn btn-primary" onClick={addItem} style={{ padding: '0.625rem' }} aria-label="Add item to purchase">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -242,7 +242,7 @@ function PurchasesPage() {
                         <td data-label="Cost">₹{item.costPrice.toFixed(0)}</td>
                         <td data-label="Total" style={{ fontWeight: 600 }}>₹{(item.quantity * item.costPrice).toFixed(0)}</td>
                         <td data-label="Action" style={{ textAlign: 'right' }}>
-                          <button type="button" className="btn btn-light" onClick={() => removeItem(item.product._id)} style={{ padding: '0.4rem', color: 'var(--color-danger)' }}>
+                          <button type="button" className="btn btn-light" onClick={() => removeItem(item.product._id)} style={{ padding: '0.4rem', color: 'var(--color-danger)' }} aria-label={`Remove ${item.product.name} from purchase`}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <polyline points="3 6 5 6 21 6"></polyline>
                               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>

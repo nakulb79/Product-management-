@@ -49,13 +49,14 @@ function ScannerPanel({ onScan }: ScannerPanelProps) {
         onScanSuccess,
         () => {}
       );
-    } catch (err: any) {
+    } catch (err) {
       let userMessage = 'Unable to start camera. Please ensure no other app is using it and try again.';
       const errorString = String(err).toLowerCase();
+      const errorName = err instanceof Error ? err.name : '';
 
-      if (errorString.includes('notallowederror') || errorString.includes('permission denied') || err.name === 'NotAllowedError') {
+      if (errorString.includes('notallowederror') || errorString.includes('permission denied') || errorName === 'NotAllowedError') {
         userMessage = 'Camera blocked. Please click the padlock icon (🔒) in your address bar and allow camera access.';
-      } else if (errorString.includes('notfounderror') || err.name === 'NotFoundError') {
+      } else if (errorString.includes('notfounderror') || errorName === 'NotFoundError') {
         userMessage = 'No camera device found on this device.';
       }
 

@@ -97,7 +97,7 @@ function ProductManagementPage() {
     setError('');
     try {
       await Promise.all([fetchProducts(1), fetchCategories()]);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load product page data.'));
     } finally {
       setLoading(false);
@@ -111,7 +111,7 @@ function ProductManagementPage() {
     setError('');
     try {
       await fetchProducts(clamped);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load products.'));
     } finally {
       setLoading(false);
@@ -137,7 +137,7 @@ function ProductManagementPage() {
           setFromScanner(true);
           setNotice(`New barcode ${barcode} scanned — fill in the rest and save to add it to your inventory.`);
         }
-      } catch (requestError: any) {
+      } catch (requestError) {
         setError(getErrorMessage(requestError, 'Failed to load product page data.'));
       } finally {
         setLoading(false);
@@ -153,7 +153,7 @@ function ProductManagementPage() {
       return;
     }
     const timer = setTimeout(() => {
-      fetchProducts(1).catch((requestError: any) => {
+      fetchProducts(1).catch((requestError) => {
         setError(getErrorMessage(requestError, 'Failed to load products.'));
       });
     }, 350);
@@ -202,7 +202,7 @@ function ProductManagementPage() {
         setNotice('Product created successfully.');
         await fetchProducts();
       }
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to save product.'));
     }
   };
@@ -234,7 +234,7 @@ function ProductManagementPage() {
       setNotice('Product deleted successfully.');
       if (editingId === productId) resetForm();
       await fetchProducts();
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to delete product.'));
     }
   };
@@ -377,7 +377,7 @@ function ProductManagementPage() {
 
       setBulkResult({ createdCount, failedCount, failures });
       if (createdCount > 0) await fetchProducts(1);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setBulkError(getErrorMessage(requestError, 'Bulk import failed.'));
     } finally {
       setBulkLoading(false);
@@ -508,13 +508,13 @@ function ProductManagementPage() {
                       </td>
                       <td data-label="Actions" style={{ textAlign: 'right' }}>
                         <div className="action-row" style={{ justifyContent: 'flex-end' }}>
-                          <button type="button" className="btn btn-light" onClick={() => handleEdit(product)} style={{ padding: '0.4rem' }} title="Edit">
+                          <button type="button" className="btn btn-light" onClick={() => handleEdit(product)} style={{ padding: '0.4rem' }} title="Edit" aria-label={`Edit ${product.name}`}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                             </svg>
                           </button>
-                          <button type="button" className="btn btn-light" onClick={() => handleDelete(product._id)} style={{ padding: '0.4rem', color: 'var(--color-danger)' }} title="Delete">
+                          <button type="button" className="btn btn-light" onClick={() => handleDelete(product._id)} style={{ padding: '0.4rem', color: 'var(--color-danger)' }} title="Delete" aria-label={`Delete ${product.name}`}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <polyline points="3 6 5 6 21 6"></polyline>
                               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>

@@ -31,7 +31,7 @@ function SalesPage() {
   useEffect(() => {
     setLoading(true);
     fetchProducts()
-      .catch((requestError: any) => {
+      .catch((requestError) => {
         setError(getErrorMessage(requestError, 'Failed to load products.'));
       })
       .finally(() => setLoading(false));
@@ -117,7 +117,7 @@ function SalesPage() {
       setLastSale(response.data);
       resetAfterSale();
       await fetchProducts();
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to complete sale.'));
     } finally {
       setLoading(false);
@@ -292,11 +292,12 @@ function SalesPage() {
                       </button>
                     </div>
                     <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)' }}>× ₹{item.product.price.toFixed(0)}</span>
-                    <button 
-                      type="button" 
-                      className="btn btn-light" 
+                    <button
+                      type="button"
+                      className="btn btn-light"
                       onClick={() => removeFromCart(item.product._id)}
                       style={{ marginLeft: 'auto', padding: '0.4rem', color: 'var(--color-danger)', background: 'transparent' }}
+                      aria-label={`Remove ${item.product.name} from cart`}
                     >
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="3 6 5 6 21 6"></polyline>

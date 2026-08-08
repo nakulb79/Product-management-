@@ -25,7 +25,7 @@ function ReorderPage() {
     try {
       const response = await api.get<Product[]>('/stock/alerts/low');
       setItems(response.data);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setError(getErrorMessage(requestError, 'Failed to load low-stock products.'));
     } finally {
       setLoading(false);

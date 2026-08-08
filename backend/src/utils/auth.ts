@@ -2,6 +2,11 @@ import crypto from 'crypto';
 
 const DEFAULT_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7;
 
+export const AUTH_COOKIE_NAME = 'auth_token';
+
+export const getJwtExpiresInSeconds = (): number =>
+  Number(process.env.JWT_EXPIRES_IN) || DEFAULT_EXPIRES_IN_SECONDS;
+
 type JwtPayload = {
   sub: string;
   role: 'owner' | 'staff';
@@ -50,7 +55,7 @@ export const verifyPassword = async (password: string, storedHash: string): Prom
 
 export const signJwt = (data: Omit<JwtPayload, 'iat' | 'exp'>): string => {
   const now = Math.floor(Date.now() / 1000);
-  const exp = now + (Number(process.env.JWT_EXPIRES_IN) || DEFAULT_EXPIRES_IN_SECONDS);
+  const exp = now + getJwtExpiresInSeconds();
 
   const header = { alg: 'HS256', typ: 'JWT' };
   const payload: JwtPayload = { ...data, iat: now, exp };

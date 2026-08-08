@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { DailySalesSummary, Dashboard, ProfitSummary } from '../types';
+import TableStatusRow from '../components/TableStatusRow';
 
 type RevenuePoint = {
   day: string;
@@ -218,7 +219,7 @@ function DashboardPage() {
             </thead>
             <tbody>
               {profit.topProfitableProducts.length === 0 ? (
-                <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '2rem' }}>{loading ? 'Loading profit data...' : 'No profit data yet.'}</td></tr>
+                <TableStatusRow colSpan={5} text={loading ? 'Loading profit data...' : 'No profit data yet.'} style={{ padding: '2rem' }} />
               ) : (
                 profit.topProfitableProducts.map((product) => (
                   <tr key={product.productId}>

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import api from '../api/api';
 import { Product } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { ErrorBanner } from '../components/Banner';
+import TableStatusRow from '../components/TableStatusRow';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 const parseCategoryName = (category: Product['category']) => (typeof category === 'string' ? category : category?.name || 'Unknown');
 
@@ -23,7 +26,7 @@ function ReorderPage() {
       const response = await api.get<Product[]>('/stock/alerts/low');
       setItems(response.data);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load low-stock products.');
+      setError(getErrorMessage(requestError, 'Failed to load low-stock products.'));
     } finally {
       setLoading(false);
     }
@@ -40,7 +43,7 @@ function ReorderPage() {
         <p>Every active product at or below its low-stock threshold, lowest stock first.</p>
       </header>
 
-      {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2', marginBottom: '1.5rem' }}>{error}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       <section className="panel">
         <div className="panel-header">
@@ -63,17 +66,9 @@ function ReorderPage() {
             </thead>
             <tbody>
               {loading && items.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                    Loading reorder list...
-                  </td>
-                </tr>
+                <TableStatusRow colSpan={5} text="Loading reorder list..." />
               ) : items.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                    Nothing is low on stock right now.
-                  </td>
-                </tr>
+                <TableStatusRow colSpan={5} text="Nothing is low on stock right now." />
               ) : (
                 items.map((product) => (
                   <tr key={product._id}>

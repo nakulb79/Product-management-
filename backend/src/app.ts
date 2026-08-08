@@ -1,11 +1,15 @@
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import router from './routes';
 
 const app = express();
 
 // Required for express-rate-limit to see the real client IP behind Vercel's proxy.
 app.set('trust proxy', 1);
+
+app.use(helmet());
 
 const getOrigins = (): string[] => {
   const origin = process.env.CLIENT_ORIGIN;
@@ -46,6 +50,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(cookieParser());
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'OK' });
@@ -55,7 +60,9 @@ app.use('/api', router);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  const message =
+    process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message || 'Internal server error';
+  res.status(500).json({ error: message });
 });
 
 export default app;

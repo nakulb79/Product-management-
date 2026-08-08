@@ -3,6 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import api from '../api/api';
 import { Product, ProductListResponse } from '../types';
 import { useCart } from '../context/CartContext';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 function BarcodeScannerPage() {
   const [scanResult, setScanResult] = useState<string | null>(null);
@@ -161,7 +162,7 @@ function BarcodeScannerPage() {
         setError('Product not found in database.');
       }
     } catch (err: any) {
-      setError('Failed to check product. ' + (err.response?.data?.error || err.message));
+      setError('Failed to check product. ' + getErrorMessage(err, 'Unknown error'));
     } finally {
       setLoading(false);
     }

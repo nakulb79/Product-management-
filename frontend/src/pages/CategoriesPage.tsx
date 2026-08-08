@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import api from '../api/api';
 import { Category } from '../types';
+import { ErrorBanner, SuccessBanner } from '../components/Banner';
+import TableStatusRow from '../components/TableStatusRow';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 type CategoryFormState = {
   name: string;
@@ -32,7 +35,7 @@ function CategoriesPage() {
       const response = await api.get<Category[]>('/categories');
       setCategories(response.data);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load categories.');
+      setError(getErrorMessage(requestError, 'Failed to load categories.'));
     } finally {
       setLoading(false);
     }
@@ -85,7 +88,7 @@ function CategoriesPage() {
       resetForm();
       await fetchCategories();
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to save category.');
+      setError(getErrorMessage(requestError, 'Failed to save category.'));
     }
   };
 
@@ -107,8 +110,8 @@ function CategoriesPage() {
         <p>Organize your inventory with a structured hierarchy.</p>
       </header>
 
-      {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2', marginBottom: '1.5rem' }}>{error}</p>}
-      {notice && <p className="success-text" style={{ padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7', marginBottom: '1.5rem' }}>{notice}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {notice && <SuccessBanner>{notice}</SuccessBanner>}
 
       <div className="purchases-layout" style={{ gridTemplateColumns: '1fr 380px' }}>
         <section className="panel">
@@ -131,17 +134,9 @@ function CategoriesPage() {
               </thead>
               <tbody>
                 {loading && categories.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                      Loading categories...
-                    </td>
-                  </tr>
+                  <TableStatusRow colSpan={4} text="Loading categories..." />
                 ) : categories.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                      No categories found. Start by adding one.
-                    </td>
-                  </tr>
+                  <TableStatusRow colSpan={4} text="No categories found. Start by adding one." />
                 ) : (
                   categories.map((category) => (
                     <tr key={category._id}>

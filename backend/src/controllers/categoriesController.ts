@@ -16,6 +16,7 @@ export const createCategory = async (req: AuthenticatedRequest, res: Response) =
     }
   }
 
+  // validateBody already stripped req.body to the category schema's allow-list.
   const category = await Category.create({ ...req.body, createdBy: req.user.id });
   res.status(201).json(category);
 };

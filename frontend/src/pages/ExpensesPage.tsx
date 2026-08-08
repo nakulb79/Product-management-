@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { Expense, ExpenseCategory, ExpenseListResponse } from '../types';
+import { ErrorBanner, SuccessBanner } from '../components/Banner';
+import TableStatusRow from '../components/TableStatusRow';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 const categories: ExpenseCategory[] = ['rent', 'utilities', 'salary', 'transport', 'misc', 'other'];
 const PAGE_SIZE = 15;
@@ -34,7 +37,7 @@ function ExpensesPage() {
     try {
       await loadExpenses(clamped);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load expenses');
+      setError(getErrorMessage(requestError, 'Failed to load expenses'));
     } finally {
       setLoading(false);
     }
@@ -46,7 +49,7 @@ function ExpensesPage() {
       try {
         await loadExpenses(1);
       } catch (requestError: any) {
-        setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load expenses');
+        setError(getErrorMessage(requestError, 'Failed to load expenses'));
       } finally {
         setLoading(false);
       }
@@ -92,7 +95,7 @@ function ExpensesPage() {
       setNotice('Expense added successfully.');
       await loadExpenses(1);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to create expense.');
+      setError(getErrorMessage(requestError, 'Failed to create expense.'));
     } finally {
       setLoading(false);
     }
@@ -105,8 +108,8 @@ function ExpensesPage() {
         <p>Track your operational costs to calculate accurate net profit.</p>
       </header>
 
-      {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2', marginBottom: '1.5rem' }}>{error}</p>}
-      {notice && <p className="success-text" style={{ padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7', marginBottom: '1.5rem' }}>{notice}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {notice && <SuccessBanner>{notice}</SuccessBanner>}
 
       <section className="purchases-layout" style={{ gridTemplateColumns: '400px 1fr' }}>
         <article className="panel" style={{ height: 'fit-content' }}>
@@ -176,9 +179,7 @@ function ExpensesPage() {
               </thead>
               <tbody>
                 {expenses.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>No expenses recorded yet.</td>
-                  </tr>
+                  <TableStatusRow colSpan={3} text="No expenses recorded yet." />
                 ) : (
                   expenses.map((expense) => (
                     <tr key={expense._id}>

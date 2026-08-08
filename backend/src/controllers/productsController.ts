@@ -106,6 +106,8 @@ export const createProduct = async (req: AuthenticatedRequest, res: Response) =>
   const existingSku = await Product.findOne({ sku: resolvedSku });
   if (existingSku) return res.status(400).json({ error: 'SKU already exists' });
 
+  // validateBody already stripped req.body to the product schema's allow-list, so this
+  // spread can't be used to smuggle in createdBy or any other unlisted field.
   const product = await Product.create({ ...req.body, sku: resolvedSku, createdBy: req.user.id });
   const populated = await Product.findById(product._id).populate('category', 'name slug');
   res.status(201).json(populated);
@@ -164,6 +166,7 @@ export const updateProduct = async (req: AuthenticatedRequest, res: Response) =>
     if (existingBarcode) return res.status(400).json({ error: 'Barcode already exists' });
   }
 
+  // validateBody already stripped req.body to the product schema's allow-list.
   const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('category', 'name slug');
   if (!product) return res.status(404).json({ error: 'Product not found' });
   res.json(product);

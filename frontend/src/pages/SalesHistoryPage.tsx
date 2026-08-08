@@ -3,6 +3,9 @@ import api from '../api/api';
 import { Sale, SalesListResponse } from '../types';
 import { printInvoiceReceipt } from '../utils/invoice';
 import { useAuth } from '../context/AuthContext';
+import { ErrorBanner } from '../components/Banner';
+import TableStatusRow from '../components/TableStatusRow';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 type InvoiceData = {
   invoiceNumber: string;
@@ -46,7 +49,7 @@ function SalesHistoryPage() {
       const response = await api.get<SalesListResponse>('/sales', { params: { page: 1, limit: 200 } });
       setSales(response.data.data);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load sales history.');
+      setError(getErrorMessage(requestError, 'Failed to load sales history.'));
     } finally {
       setLoading(false);
     }
@@ -159,7 +162,7 @@ function SalesHistoryPage() {
       await loadSales();
       if (selectedSale?._id === sale._id) setSelectedSale(null);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to void sale.');
+      setError(getErrorMessage(requestError, 'Failed to void sale.'));
     } finally {
       setVoidingId(null);
     }
@@ -173,7 +176,7 @@ function SalesHistoryPage() {
       const response = await api.get<InvoiceData>(`/sales/${saleId}/invoice`);
       setInvoiceData(response.data);
     } catch (requestError: any) {
-      setInvoiceError(requestError?.response?.data?.error || requestError?.message || 'Failed to load invoice.');
+      setInvoiceError(getErrorMessage(requestError, 'Failed to load invoice.'));
     } finally {
       setInvoiceLoading(false);
     }
@@ -227,7 +230,7 @@ function SalesHistoryPage() {
         </div>
       </section>
 
-      {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2', marginBottom: '1.5rem' }}>{error}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       <section className="panel">
         <div className="table-container mobile-stack-table">
@@ -244,17 +247,9 @@ function SalesHistoryPage() {
             </thead>
             <tbody>
               {loading && paginatedSales.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                    Loading sales records...
-                  </td>
-                </tr>
+                <TableStatusRow colSpan={6} text="Loading sales records..." />
               ) : paginatedSales.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                    No sales found matching your filters.
-                  </td>
-                </tr>
+                <TableStatusRow colSpan={6} text="No sales found matching your filters." />
               ) : (
                 paginatedSales.map((sale) => (
                   <tr key={sale._id} style={sale.voided ? { opacity: 0.6 } : undefined}>

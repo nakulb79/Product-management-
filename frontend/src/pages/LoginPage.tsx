@@ -1,5 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { ErrorBanner } from '../components/Banner';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 function LoginPage() {
   const { login } = useAuth();
@@ -18,7 +20,7 @@ function LoginPage() {
       window.history.pushState({}, '', '/dashboard');
       window.dispatchEvent(new PopStateEvent('popstate'));
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Invalid credentials. Please try again.');
+      setError(getErrorMessage(requestError, 'Invalid credentials. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -46,18 +48,9 @@ function LoginPage() {
         </div>
 
         {error && (
-          <div style={{ 
-            padding: '0.75rem', 
-            background: '#fef2f2', 
-            border: '1px solid #fee2e2', 
-            borderRadius: '8px', 
-            color: 'var(--color-danger)',
-            fontSize: '0.875rem',
-            marginBottom: '1.5rem',
-            textAlign: 'center'
-          }}>
+          <ErrorBanner style={{ padding: '0.75rem', fontSize: '0.875rem', textAlign: 'center' }}>
             {error}
-          </div>
+          </ErrorBanner>
         )}
 
         <form className="login-form" onSubmit={handleSubmit} style={{ display: 'grid', gap: '1.5rem' }}>

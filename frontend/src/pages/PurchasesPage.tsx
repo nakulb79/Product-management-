@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { Product, ProductListResponse, Purchase, PurchaseListResponse } from '../types';
+import { ErrorBanner, SuccessBanner } from '../components/Banner';
+import TableStatusRow from '../components/TableStatusRow';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 type DraftItem = {
   productId: string;
@@ -40,7 +43,7 @@ function PurchasesPage() {
     try {
       await Promise.all([loadProducts(), loadPurchases(1)]);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load purchases module.');
+      setError(getErrorMessage(requestError, 'Failed to load purchases module.'));
     } finally {
       setLoading(false);
     }
@@ -54,7 +57,7 @@ function PurchasesPage() {
     try {
       await loadPurchases(clamped);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load purchases.');
+      setError(getErrorMessage(requestError, 'Failed to load purchases.'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +76,7 @@ function PurchasesPage() {
           setNotice('Product pre-selected from scanner.');
         }
       } catch (requestError: any) {
-        setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load purchases module.');
+        setError(getErrorMessage(requestError, 'Failed to load purchases module.'));
       } finally {
         setLoading(false);
       }
@@ -137,7 +140,7 @@ function PurchasesPage() {
       setItems([]);
       await Promise.all([loadPurchases(1), loadProducts()]);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to create purchase.');
+      setError(getErrorMessage(requestError, 'Failed to create purchase.'));
     } finally {
       setLoading(false);
     }
@@ -156,8 +159,8 @@ function PurchasesPage() {
         <p>Record stock intake from suppliers and track inventory costs.</p>
       </header>
 
-      {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2', marginBottom: '1.5rem' }}>{error}</p>}
-      {notice && <p className="success-text" style={{ padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7', marginBottom: '1.5rem' }}>{notice}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {notice && <SuccessBanner>{notice}</SuccessBanner>}
 
       <section className="purchases-layout" style={{ gridTemplateColumns: '1fr 420px' }}>
         <article className="panel">
@@ -227,7 +230,7 @@ function PurchasesPage() {
                 </thead>
                 <tbody>
                   {items.length === 0 ? (
-                    <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '2rem' }}>No items added to this purchase yet.</td></tr>
+                    <TableStatusRow colSpan={5} text="No items added to this purchase yet." style={{ padding: '2rem' }} />
                   ) : (
                     items.map((item) => (
                       <tr key={item.product._id}>
@@ -281,7 +284,7 @@ function PurchasesPage() {
               </thead>
               <tbody>
                 {purchases.length === 0 ? (
-                  <tr><td colSpan={2} className="muted" style={{ textAlign: 'center', padding: '2rem' }}>No history yet.</td></tr>
+                  <TableStatusRow colSpan={2} text="No history yet." style={{ padding: '2rem' }} />
                 ) : (
                   purchases.map((purchase) => (
                     <tr key={purchase._id}>

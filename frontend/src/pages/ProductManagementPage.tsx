@@ -2,6 +2,9 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 're
 import api from '../api/api';
 import { Category, Product, ProductListResponse } from '../types';
 import { parseCsv } from '../utils/csv';
+import { ErrorBanner, SuccessBanner } from '../components/Banner';
+import TableStatusRow from '../components/TableStatusRow';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 type BulkImportFailure = { row: number; name: string; error: string };
 type BulkImportResult = { createdCount: number; failedCount: number; failures: BulkImportFailure[] };
@@ -95,7 +98,7 @@ function ProductManagementPage() {
     try {
       await Promise.all([fetchProducts(1), fetchCategories()]);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load product page data.');
+      setError(getErrorMessage(requestError, 'Failed to load product page data.'));
     } finally {
       setLoading(false);
     }
@@ -109,7 +112,7 @@ function ProductManagementPage() {
     try {
       await fetchProducts(clamped);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load products.');
+      setError(getErrorMessage(requestError, 'Failed to load products.'));
     } finally {
       setLoading(false);
     }
@@ -135,7 +138,7 @@ function ProductManagementPage() {
           setNotice(`New barcode ${barcode} scanned — fill in the rest and save to add it to your inventory.`);
         }
       } catch (requestError: any) {
-        setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load product page data.');
+        setError(getErrorMessage(requestError, 'Failed to load product page data.'));
       } finally {
         setLoading(false);
       }
@@ -151,7 +154,7 @@ function ProductManagementPage() {
     }
     const timer = setTimeout(() => {
       fetchProducts(1).catch((requestError: any) => {
-        setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load products.');
+        setError(getErrorMessage(requestError, 'Failed to load products.'));
       });
     }, 350);
     return () => clearTimeout(timer);
@@ -200,7 +203,7 @@ function ProductManagementPage() {
         await fetchProducts();
       }
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to save product.');
+      setError(getErrorMessage(requestError, 'Failed to save product.'));
     }
   };
 
@@ -232,7 +235,7 @@ function ProductManagementPage() {
       if (editingId === productId) resetForm();
       await fetchProducts();
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to delete product.');
+      setError(getErrorMessage(requestError, 'Failed to delete product.'));
     }
   };
 
@@ -375,7 +378,7 @@ function ProductManagementPage() {
       setBulkResult({ createdCount, failedCount, failures });
       if (createdCount > 0) await fetchProducts(1);
     } catch (requestError: any) {
-      setBulkError(requestError?.response?.data?.error || requestError?.message || 'Bulk import failed.');
+      setBulkError(getErrorMessage(requestError, 'Bulk import failed.'));
     } finally {
       setBulkLoading(false);
     }
@@ -409,8 +412,8 @@ function ProductManagementPage() {
         </div>
       )}
 
-      {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2', marginBottom: '1.5rem' }}>{error}</p>}
-      {notice && <p className="success-text" style={{ padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7', marginBottom: '1.5rem' }}>{notice}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {notice && <SuccessBanner>{notice}</SuccessBanner>}
 
       <div className="purchases-layout" style={{ gridTemplateColumns: '1fr 400px' }}>
         <section className="panel">
@@ -466,17 +469,9 @@ function ProductManagementPage() {
               </thead>
               <tbody>
                 {loading && products.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                      Loading products...
-                    </td>
-                  </tr>
+                  <TableStatusRow colSpan={6} text="Loading products..." />
                 ) : products.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '3rem' }}>
-                      No products in your inventory.
-                    </td>
-                  </tr>
+                  <TableStatusRow colSpan={6} text="No products in your inventory." />
                 ) : (
                   products.map((product) => (
                     <tr key={product._id}>

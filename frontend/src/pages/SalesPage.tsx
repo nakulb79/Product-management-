@@ -4,6 +4,8 @@ import { Product, ProductListResponse, Sale } from '../types';
 import { useCart } from '../context/CartContext';
 import { printInvoiceReceipt } from '../utils/invoice';
 import ScannerPanel from '../components/ScannerPanel';
+import { ErrorBanner } from '../components/Banner';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 function SalesPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -30,7 +32,7 @@ function SalesPage() {
     setLoading(true);
     fetchProducts()
       .catch((requestError: any) => {
-        setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load products.');
+        setError(getErrorMessage(requestError, 'Failed to load products.'));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -102,8 +104,7 @@ function SalesPage() {
         items: cart.map((item) => ({
           productId: item.product._id,
           quantity: item.quantity,
-          lineDiscount: 0,
-          price: item.product.price
+          lineDiscount: 0
         })),
         paymentMethod,
         discount: discountAmount,
@@ -117,7 +118,7 @@ function SalesPage() {
       resetAfterSale();
       await fetchProducts();
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to complete sale.');
+      setError(getErrorMessage(requestError, 'Failed to complete sale.'));
     } finally {
       setLoading(false);
     }
@@ -136,7 +137,7 @@ function SalesPage() {
         <p>Real-time billing with automated inventory sync.</p>
       </header>
 
-      {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2' }}>{error}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
       {notice && (
         <div
           className="success-text"

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { Product, ProductListResponse, StockAdjustment, StockAdjustmentListResponse, StockAdjustmentReason } from '../types';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 const reasons: StockAdjustmentReason[] = ['damaged', 'expired', 'count_correction', 'theft', 'return', 'other'];
 const PAGE_SIZE = 15;
@@ -41,7 +42,7 @@ function StockAdjustmentsPage() {
     try {
       await loadAdjustments(clamped);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load stock adjustments.');
+      setError(getErrorMessage(requestError, 'Failed to load stock adjustments.'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +61,7 @@ function StockAdjustmentsPage() {
           setNotice('Product pre-selected from scanner.');
         }
       } catch (requestError: any) {
-        setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load stock adjustments.');
+        setError(getErrorMessage(requestError, 'Failed to load stock adjustments.'));
       } finally {
         setLoading(false);
       }
@@ -96,7 +97,7 @@ function StockAdjustmentsPage() {
       setReason('count_correction');
       await loadData(1);
     } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to adjust stock.');
+      setError(getErrorMessage(requestError, 'Failed to adjust stock.'));
     } finally {
       setLoading(false);
     }

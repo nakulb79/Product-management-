@@ -8,12 +8,13 @@ import CategoriesPage from './pages/CategoriesPage';
 import ProductManagementPage from './pages/ProductManagementPage';
 import StockAdjustmentsPage from './pages/StockAdjustmentsPage';
 import BarcodeScannerPage from './pages/BarcodeScannerPage';
+import ReorderPage from './pages/ReorderPage';
 import LoginPage from './pages/LoginPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { CartProvider } from './context/CartContext';
+import { CartProvider, useCart } from './context/CartContext';
 import './styles.css';
 
-type AppRoute = '/dashboard' | '/sales' | '/sales/history' | '/products' | '/categories' | '/purchases' | '/expenses' | '/stock-adjustments' | '/scanner' | '/login';
+type AppRoute = '/dashboard' | '/sales' | '/sales/history' | '/products' | '/categories' | '/purchases' | '/expenses' | '/stock-adjustments' | '/scanner' | '/reorder' | '/login';
 
 const normalizePath = (path: string): AppRoute => {
   if (path === '/sales') return '/sales';
@@ -24,6 +25,7 @@ const normalizePath = (path: string): AppRoute => {
   if (path === '/expenses') return '/expenses';
   if (path === '/stock-adjustments') return '/stock-adjustments';
   if (path === '/scanner') return '/scanner';
+  if (path === '/reorder') return '/reorder';
   if (path === '/login') return '/login';
   return '/dashboard';
 };
@@ -32,6 +34,8 @@ function AppShell() {
   const [route, setRoute] = useState<AppRoute>(normalizePath(window.location.pathname));
   const [menuOpen, setMenuOpen] = useState(false);
   const { user, loading, logout } = useAuth();
+  const { cart } = useCart();
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   useEffect(() => {
     const onPopState = () => setRoute(normalizePath(window.location.pathname));
@@ -99,8 +103,32 @@ function AppShell() {
             <button type="button" className={`btn ${route === '/scanner' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/scanner')}>
               Scanner
             </button>
-            <button type="button" className={`btn ${route === '/sales' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/sales')}>
+            <button type="button" className={`btn ${route === '/sales' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/sales')} style={{ position: 'relative' }}>
               Sales
+              {cartCount > 0 && (
+                <span
+                  className="cart-count-badge"
+                  style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: 'var(--color-danger)',
+                    color: 'white',
+                    borderRadius: '999px',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    minWidth: '18px',
+                    height: '18px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                    lineHeight: 1
+                  }}
+                >
+                  {cartCount}
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -130,7 +158,10 @@ function AppShell() {
             <button type="button" className={`btn ${route === '/stock-adjustments' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/stock-adjustments')}>
               Stock
             </button>
-            
+            <button type="button" className={`btn ${route === '/reorder' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/reorder')}>
+              Reorder
+            </button>
+
             <div className="nav-user">
               <span className="muted" style={{ fontSize: '0.875rem', fontWeight: 500 }}>{user.name}</span>
               <button type="button" className="btn btn-outline" onClick={logout} style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}>
@@ -151,6 +182,7 @@ function AppShell() {
         {route === '/purchases' && user.role === 'owner' && <PurchasesPage />}
         {route === '/expenses' && <ExpensesPage />}
         {route === '/stock-adjustments' && <StockAdjustmentsPage />}
+        {route === '/reorder' && <ReorderPage />}
       </main>
     </>
   );

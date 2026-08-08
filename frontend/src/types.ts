@@ -72,6 +72,9 @@ export interface Sale {
   notes?: string;
   createdBy: { _id: string; name: string } | string;
   createdAt: string;
+  voided?: boolean;
+  voidedAt?: string;
+  voidReason?: string;
 }
 
 export interface SalesListResponse {

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { Sale, SalesListResponse } from '../types';
+import { printInvoiceReceipt } from '../utils/invoice';
+import { useAuth } from '../context/AuthContext';
 
 type InvoiceData = {
   invoiceNumber: string;
@@ -15,14 +17,17 @@ type InvoiceData = {
   grandTotal: number;
   paymentMethod: 'cash' | 'upi' | 'card';
   notes?: string;
+  voided?: boolean;
 };
 
 const ITEMS_PER_PAGE = 10;
 
 function SalesHistoryPage() {
+  const { user } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [voidingId, setVoidingId] = useState<string | null>(null);
 
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'cash' | 'upi' | 'card'>('all');
   const [fromDate, setFromDate] = useState('');
@@ -92,76 +97,8 @@ function SalesHistoryPage() {
 
   const printInvoice = () => {
     if (!invoiceData) return;
-
-    const printWindow = window.open('', '_blank', 'width=900,height=700');
-    if (!printWindow) {
-      setInvoiceError('Unable to open print window. Please allow pop-ups and try again.');
-      return;
-    }
-
-    const rows = invoiceData.items
-      .map((item) => `
-        <tr>
-          <td style="padding:8px;border:1px solid #d0d7de;">${item.productName}</td>
-          <td style="padding:8px;border:1px solid #d0d7de;">${item.quantity}</td>
-          <td style="padding:8px;border:1px solid #d0d7de;">₹${item.unitPrice.toFixed(2)}</td>
-          <td style="padding:8px;border:1px solid #d0d7de;">₹${item.lineTotal.toFixed(2)}</td>
-        </tr>
-      `)
-      .join('');
-
-    const html = `
-      <html>
-        <head>
-          <title>Invoice ${invoiceData.invoiceNumber}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            h1, h2, h3, p { margin: 0 0 10px; }
-            .meta { margin-bottom: 14px; }
-            table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; }
-            th, td { text-align: left; }
-            th { padding: 8px; border: 1px solid #d0d7de; background: #f8fafc; }
-            .totals p { margin: 4px 0; }
-            @media print { body { margin: 10mm; } }
-          </style>
-        </head>
-        <body>
-          <h2>Sales Invoice</h2>
-          <div class="meta">
-            <p><strong>Invoice #:</strong> ${invoiceData.invoiceNumber}</p>
-            <p><strong>Date:</strong> ${new Date(invoiceData.createdAt).toLocaleString()}</p>
-            <p><strong>Customer:</strong> ${invoiceData.customerName || '-'}</p>
-            <p><strong>Phone:</strong> ${invoiceData.customerPhone || '-'}</p>
-            <p><strong>Payment:</strong> ${invoiceData.paymentMethod}</p>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>Line Total</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-
-          <div class="totals">
-            <p><strong>Sub Total:</strong> ₹${invoiceData.subTotal.toFixed(2)}</p>
-            <p><strong>Discount:</strong> ₹${invoiceData.discount.toFixed(2)}</p>
-            <p><strong>GST:</strong> ₹${invoiceData.gstAmount.toFixed(2)} (${invoiceData.gstRate}%)</p>
-            <h3>Total: ₹${invoiceData.grandTotal.toFixed(2)}</h3>
-          </div>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+    const failureMessage = printInvoiceReceipt(invoiceData);
+    if (failureMessage) setInvoiceError(failureMessage);
   };
 
 
@@ -207,6 +144,25 @@ function SalesHistoryPage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const voidSale = async (sale: Sale) => {
+    const reason = window.prompt(
+      `Void invoice ${sale.invoiceNumber}?\n\nThis restores stock for every item on this sale and removes it from revenue totals. This cannot be undone.\n\nOptional reason:`
+    );
+    if (reason === null) return;
+
+    setVoidingId(sale._id);
+    setError('');
+    try {
+      await api.post(`/sales/${sale._id}/void`, { reason });
+      await loadSales();
+      if (selectedSale?._id === sale._id) setSelectedSale(null);
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to void sale.');
+    } finally {
+      setVoidingId(null);
+    }
   };
 
   const openInvoice = async (saleId: string) => {
@@ -301,7 +257,7 @@ function SalesHistoryPage() {
                 </tr>
               ) : (
                 paginatedSales.map((sale) => (
-                  <tr key={sale._id}>
+                  <tr key={sale._id} style={sale.voided ? { opacity: 0.6 } : undefined}>
                     <td data-label="Invoice Info">
                       <div style={{ fontWeight: 600 }}>{sale.invoiceNumber}</div>
                       <div className="muted" style={{ fontSize: '0.75rem' }}>{new Date(sale.createdAt).toLocaleString()}</div>
@@ -312,12 +268,16 @@ function SalesHistoryPage() {
                       </span>
                     </td>
                     <td data-label="Financials">
-                      <div style={{ fontWeight: 700 }}>₹{sale.grandTotal.toFixed(0)}</div>
+                      <div style={{ fontWeight: 700, textDecoration: sale.voided ? 'line-through' : 'none' }}>₹{sale.grandTotal.toFixed(0)}</div>
                       <div className="muted" style={{ fontSize: '0.75rem' }}>Profit: ₹{(sale.grossProfit || 0).toFixed(0)} ({(sale.margin || 0).toFixed(1)}%)</div>
                     </td>
                     <td data-label="Created By" className="muted" style={{ fontSize: '0.875rem' }}>{createdByName(sale.createdBy)}</td>
                     <td data-label="Status" style={{ textAlign: 'center' }}>
-                      <span className="status-pill status-active" style={{ fontSize: '0.7rem' }}>Completed</span>
+                      {sale.voided ? (
+                        <span className="status-pill status-inactive" style={{ fontSize: '0.7rem' }} title={sale.voidReason || undefined}>Voided</span>
+                      ) : (
+                        <span className="status-pill status-active" style={{ fontSize: '0.7rem' }}>Completed</span>
+                      )}
                     </td>
                     <td data-label="Actions" style={{ textAlign: 'right' }}>
                       <div className="action-row" style={{ justifyContent: 'flex-end' }}>
@@ -327,6 +287,17 @@ function SalesHistoryPage() {
                         <button type="button" className="btn btn-primary" onClick={() => openInvoice(sale._id)} style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }}>
                           Invoice
                         </button>
+                        {user?.role === 'owner' && !sale.voided && (
+                          <button
+                            type="button"
+                            className="btn btn-light"
+                            onClick={() => voidSale(sale)}
+                            disabled={voidingId === sale._id}
+                            style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: 'var(--color-danger)' }}
+                          >
+                            {voidingId === sale._id ? 'Voiding...' : 'Void'}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -356,6 +327,11 @@ function SalesHistoryPage() {
               <h3>Sale Details</h3>
               <button className="btn btn-light" type="button" onClick={() => setSelectedSale(null)}>Close</button>
             </div>
+            {selectedSale.voided && (
+              <p className="error-text" style={{ fontWeight: 700 }}>
+                VOIDED{selectedSale.voidReason ? ` — ${selectedSale.voidReason}` : ''}
+              </p>
+            )}
             <p><strong>Invoice:</strong> {selectedSale.invoiceNumber}</p>
             <p><strong>Customer:</strong> {selectedSale.customerName || '-'}</p>
             <p><strong>Phone:</strong> {selectedSale.customerPhone || '-'}</p>
@@ -403,6 +379,7 @@ function SalesHistoryPage() {
 
             {!invoiceLoading && invoiceData && (
               <div>
+                {invoiceData.voided && <p className="error-text" style={{ fontWeight: 700 }}>VOIDED — this sale no longer counts toward revenue.</p>}
                 <p><strong>Invoice #:</strong> {invoiceData.invoiceNumber}</p>
                 <p><strong>Date:</strong> {new Date(invoiceData.createdAt).toLocaleString()}</p>
                 <p><strong>Customer:</strong> {invoiceData.customerName || '-'}</p>

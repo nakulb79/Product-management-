@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Product } from '../models/Product';
 import { StockAdjustment } from '../models/StockAdjustment';
+import { toErrorMessage } from '../utils/errors';
 
 export const createStockAdjustment = async (req: AuthenticatedRequest, res: Response) => {
   const { productId, quantityChange, reason, notes } = req.body;
@@ -51,7 +52,7 @@ export const createStockAdjustment = async (req: AuthenticatedRequest, res: Resp
     res.status(201).json(populated);
   } catch (error) {
     await session.abortTransaction();
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to create stock adjustment' });
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to create stock adjustment') });
   } finally {
     session.endSession();
   }

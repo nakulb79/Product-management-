@@ -14,6 +14,14 @@ const createUser = async () => {
   const password = 'password123';
 
   try {
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== 'true') {
+      console.error(
+        'Refusing to run: NODE_ENV=production. This script creates a well-known demo admin account ' +
+          '(admin@example.com / password123). Set ALLOW_SEED=true if you really intend to run this against production.'
+      );
+      process.exit(1);
+    }
+
     const mongoUri = process.env.MONGODB_URI;
     if (!mongoUri) {
       console.error('Error: MONGODB_URI not found in .env');

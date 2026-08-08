@@ -15,7 +15,11 @@ const toBase64Url = (input: Buffer | string) => Buffer.from(input).toString('bas
 
 const fromBase64Url = (input: string) => Buffer.from(input, 'base64url').toString('utf8');
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'change-me-in-production';
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is not set');
+  return secret;
+};
 
 export const hashPassword = async (password: string): Promise<string> => {
   const salt = crypto.randomBytes(16);
@@ -65,9 +69,18 @@ export const verifyJwt = (token: string): JwtPayload | null => {
 
   const [encodedHeader, encodedPayload, signature] = parts;
   const unsigned = `${encodedHeader}.${encodedPayload}`;
-  const expectedSig = toBase64Url(crypto.createHmac('sha256', getJwtSecret()).update(unsigned).digest());
+  const expectedSigBuf = crypto.createHmac('sha256', getJwtSecret()).update(unsigned).digest();
 
-  if (expectedSig !== signature) return null;
+  let providedSigBuf: Buffer;
+  try {
+    providedSigBuf = Buffer.from(signature, 'base64url');
+  } catch {
+    return null;
+  }
+
+  if (providedSigBuf.length !== expectedSigBuf.length || !crypto.timingSafeEqual(providedSigBuf, expectedSigBuf)) {
+    return null;
+  }
 
   const payload = JSON.parse(fromBase64Url(encodedPayload)) as JwtPayload;
   const now = Math.floor(Date.now() / 1000);

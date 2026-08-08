@@ -1,0 +1,138 @@
+Backend Analysis: Retail ERP (Node/Express/TS/Mongoose)
+1. Auth & authorization
+
+backend/src/utils/auth.ts:20-45 — Password hashing is custom crypto.scrypt with random 16-byte salt, 64-byte key, stored as salt:hash hex, compared with crypto.timingSafeEqual. This is actually a reasonable scheme (scrypt is memory-hard, salted, timing-safe compare) — better than the README's dismissive framing suggests, though it uses Node's default scrypt cost parameters (N=16384) rather than tuned ones, and there's no documented rationale/versioning if params ever need to change. Severity: low.
+backend/src/utils/auth.ts:47-76 — JWT is hand-rolled (HMAC-SHA256 sign/verify, manual base64url), not the jsonwebtoken library (confirmed absent from package.json). Functionally equivalent to HS256 JWT but untested against edge cases (alg confusion isn't possible since only HMAC is implemented, which is good, but there's no jti/revocation list, so tokens can't be invalidated before expiry — e.g., deactivating a user via isActive:false only blocks future requests because requireAuth re-fetches the user each time, so that part is fine). Severity: low-medium (custom crypto in security-critical code is generally discouraged even when correct).
+backend/src/utils/auth.ts:18 — JWT_SECRET defaults to hardcoded string 'change-me-in-production' if env var missing; if ops forgets to set it in Vercel, all tokens become forgeable with a public default. Severity: high.
+backend/src/routes/index.ts:31 — Global requireAuth applied to all /api/* routes except /auth/*, then per-route authorizeRoles — role checks look consistent across products/categories/purchases (owner-only writes) and sales/payments/deliveries/expenses/stock-adjustments (owner+staff). No route found bypassing this.
+backend/src/routes/index.ts:52-58 (payments, deliveries) — routes are gated by authorizeRoles('owner','staff') but the controllers (paymentsController.ts, deliveriesController.ts) themselves take plain Request (not AuthenticatedRequest) and never record createdBy, so there's no audit trail of who created/modified a payment or delivery, unlike Sale/Purchase/Expense/StockAdjustment. Severity: low.
+backend/src/controllers/authController.ts:21-27 — First registered user always becomes owner (bootstrap pattern); after that, registration requires an authenticated owner. Reasonable, but no rate-limiting on /login (see below) enables brute-force against the derived scrypt hash.
+2. Input validation
+
+No validation library anywhere (zod/joi/express-validator absent from package.json). All validation is ad-hoc inline if checks in controllers, inconsistent in depth.
+backend/src/controllers/productsController.ts:90-109 (createProduct) — doesn't validate price/costPrice are numbers or non-negative before Product.create (Mongoose schema min:0 will catch it, but status, images, expiryDate etc. from req.body are passed through unchecked via spread ...req.body).
+backend/src/controllers/paymentsController.ts:14, 19 and deliveriesController.ts:44 — Payment.create(req.body) / findByIdAndUpdate(req.params.id, req.body) pass the raw body straight to Mongoose with no allow-list, letting a caller set arbitrary schema fields (e.g. paymentStatus directly to completed on creation, bypassing any intended workflow). Severity: medium.
+backend/src/controllers/productsController.ts:167 and deliveriesController.ts:44 — findByIdAndUpdate(req.params.id, req.body, {runValidators:true}) — mass-assignment: any field in the schema (including createdBy) can be overwritten by whoever has owner role, no field whitelist. Severity: low-medium.
+req.params.id is passed directly into Model.findById everywhere (e.g. salesController.ts:125, productsController.ts:84) without ObjectId format validation — an invalid id throws a Mongoose CastError, which is uncaught in several non-asyncHandler-wrapped paths... actually all routes are wrapped via asyncHandler, so it lands in the global error handler and returns 500 with err.message (see #3) rather than a clean 400. Severity: low.
+3. Security issues
+
+backend/src/app.ts:53-56 — Global error handler does res.status(500).json({ error: err.message }), leaking internal error messages (e.g. Mongoose CastError text, DB errors) to clients; no stack trace suppression concerns since stack isn't sent, but message leakage is still present. No NODE_ENV check to hide details in production. Severity: medium.
+No helmet (no security headers: no CSP, no X-Content-Type-Options, etc.) — confirmed absent from dependencies. Severity: medium.
+No rate limiting anywhere (/api/auth/login, /api/auth/register fully exposed to brute force). Severity: high.
+CORS (backend/src/app.ts:13-44): reflects credentials: true with an origin-checking callback; requests with no Origin header are always allowed (app.ts:19), which is fine for server-to-server/curl but combined with credentials:true isn't itself exploitable by browsers (browsers always send Origin for cross-site fetch). Preview-domain matching (app.ts:29-33) uses origin.endsWith(domain) — this allows any hostname ending in .pages.dev claimed suffix, e.g. evil-product-management-c0p.pages.dev would NOT match since it checks suffix not prefix, so this is reasonably safe, but note it doesn't require the . before the domain, so notproduct-management-c0p.pages.dev (no dot) would still match by endsWith. Minor, severity: low.
+No NoSQL-injection sanitization (no express-mongo-sanitize). Most filters build queries from typed/coerced values (String(...), Number(...)), which limits injection surface, but productsController.ts:56 (filter.category = category) and :57 (createdBy) pass req.query values directly as ObjectId filter values without casting — Mongoose will reject non-ObjectId strings via CastError (caught by global handler → 500), not truly exploitable for injection but a robustness gap. Severity: low.
+Real .env is properly gitignored and not committed (verified via git ls-files). No hardcoded secrets found in source.
+4. Data/model issues
+
+backend/src/models/Payment.ts and Delivery.ts have no productId→referential FK check enforced at schema level (delivery does check existence in controller); Payment model has no link to Sale at all — a payment isn't tied to any order/sale record beyond a free-text orderId: String field, so there's no referential integrity between Sales and Payments. Severity: medium.
+backend/src/models/Category.ts:19 — unique compound index {name:1, parent:1} prevents duplicate category names under the same parent, but doesn't prevent circular parent references (a category could be set as its own ancestor via chained parent updates — no cycle check anywhere in categoriesController.ts). Severity: low.
+backend/src/models/Product.ts has no index on category or status despite getProducts/getLowStockProducts filtering on both frequently; only a text index exists. Severity: low-medium (perf, not correctness).
+backend/src/models/Purchase.ts and StockAdjustment.ts have no index on createdAt/productId despite being queried/sorted by these. Severity: low.
+Money stored as plain Number (float) everywhere (price, costPrice, amount, grandTotal, etc.) rather than integer minor-units or Decimal128 — floating-point summation in JS (salesController.ts:43-72) can accumulate rounding error over many line items. Severity: medium.
+5. Business logic correctness
+
+Stock updates for Sales/Purchases/StockAdjustments/Deliveries all correctly use mongoose.startSession() + session.startTransaction() wrapping the read-modify-write of product.stock (e.g. salesController.ts:20-106), which prevents lost-update races provided the deployment MongoDB is a replica set/Atlas (transactions require it) — confirmed .env.example:3 shows a plain mongodb://localhost:27017/... standalone URI with no replica-set params, so local dev likely can't run transactions at all (startSession/startTransaction throw on standalone Mongo). Severity: high (deployment/dev-env correctness risk, not a logic bug).
+salesController.ts:37-38 — stock decrement done inside the loop per item without pre-checking all items' availability first; if item 3 of 5 fails, items 1-2 already had .save() called within the transaction, but that's fine since the whole transaction aborts — correct behavior, just worth noting it's not optimized (N sequential awaits instead of bulk).
+COGS/profit math (salesController.ts:45-73, analyticsController.ts) is internally consistent: itemProfit = itemRevenue - itemCogs, aggregated correctly, margins computed guard against divide-by-zero. No correctness bug found.
+analyticsController.ts:12-16 — expense date-range reuses the sale's createdAt range object directly as expenseDate range (expenseMatch.expenseDate = match.createdAt), which works today only because both filters use the same {$gte,$lte} shape — fragile coupling, not a bug currently.
+dashboardController.ts computes totalRevenue from Payment collection (paymentStatus:'completed'), but Sales revenue is tracked independently in Sale.grossRevenue — these two revenue figures are unrelated/never reconciled, so the dashboard's "total revenue" likely doesn't match actual POS sales. Severity: medium (business-logic mismatch, confusing metric).
+6. Error handling
+
+Centralized handler exists (app.ts:53-56) and all routes are wrapped in asyncHandler (routes/index.ts:23-26), so uncaught async errors are consistently funneled to it. Status codes are used sensibly (400 for validation, 401/403 for auth, 404 for not-found, 500 fallback). Reasonably consistent overall — one of the stronger parts of the codebase.
+7. Code quality
+
+Heavy duplication of pagination boilerplate (page/limit clamping + Promise.all([find, countDocuments])) copy-pasted across salesController.ts:109-116, purchasesController.ts:65-77, stockAdjustmentsController.ts:60-72, expensesController.ts:31-57, productsController.ts:40-71 — no shared pagination helper.
+authController.ts:6, purchasesController normalizedItems, and several spots use any liberally, weakening type safety despite strict:true in tsconfig.json.
+src/middleware/.gitkeep, src/services/.gitkeep, src/utils/.gitkeep — empty placeholder folders (services/ unused entirely — no service layer, all logic lives in controllers).
+src/index.ts is a vestigial re-export ("Legacy entrypoint kept for compatibility") — dead/confusing entry point alongside server.ts and api/index.ts.
+8. Tests
+
+No test files (*.test.ts/*.spec.ts) and no Jest/Vitest config or dependency anywhere in the repo. Zero test coverage. Severity: high.
+9. Deployment sanity
+
+backend/src/config/db.ts:3-18 — Connection caching uses a module-level variable (cachedConnection), which works within a warm Vercel Lambda instance but is the standard pattern; however api/index.ts:11 calls connectDb on every invocation before delegating to app(req,res) — fine given the cache guard, but there's no connection-readiness/error differentiation from a cold connect timeout, and no bufferCommands:false/serverless-specific Mongoose tuning, which can cause hanging requests during connection storms on scale-to-zero. Severity: low-medium.
+As noted in #5, transactions used throughout require a replica-set MongoDB; if deployed against a non-Atlas standalone instance, every Sale/Purchase/StockAdjustment/Delivery write will throw. Severity: high if misconfigured.
+10. Scripts
+
+backend/src/scripts/seed.ts:26-28 and createUser.ts:12-14 — hardcoded demo credentials admin@example.com / password123 (owner role). If a developer runs seed.ts against a production database (no env guard/confirmation prompt), this creates a real owner account with a trivial, publicly-visible-in-source password. No check for NODE_ENV !== 'production' before seeding. Severity: high.
+Backend analysis is in — solid findings on auth, missing tests, transaction/replica-set risk, and dashboard revenue mismatch. Waiting on the frontend agent before I compile the full report.
+
+I now have a complete picture of the codebase. Here is the report.
+
+Routing (App.tsx)
+frontend/src/App.tsx:16-29 — normalizePath uses an if/else chain against pathname only; any unmapped path (typo, deep link, or a genuinely unknown route) silently falls through to /dashboard instead of a 404. No true not-found handling. Medium
+App.tsx:42-47 — navigate() no-ops if nextRoute === route, meaning clicking the same nav item does nothing even if query params changed — but since query string isn't part of AppRoute/state, deep links like /products?edit=<id> (built in BarcodeScannerPage.tsx:190-196) work only via full pushState + manual popstate dispatch, bypassing navigate() entirely (see BarcodeScannerPage.tsx:193-194,201-203,209-211,216-217). Two different mechanisms drive the same routing state — footgun for future maintainers. Medium
+App.tsx:36-40 — Back/forward via popstate is handled, but the query string is dropped by normalizePath (it only reads pathname), so ProductManagementPage/PurchasesPage/StockAdjustmentsPage each independently re-parse window.location.search in their own useEffect (ProductManagementPage.tsx:76-78, PurchasesPage.tsx:49-50, StockAdjustmentsPage.tsx:33-34) — duplicated logic, and it only runs once on mount, so navigating from Scanner→Products while already on /products won't re-trigger the edit/prefill (no route effectively "changes"). Medium
+App.tsx:49-63 — Two separate useEffects do redirect-to-login and redirect-to-dashboard by directly mutating history.replaceState; this is a workable but fragile hand-rolled guard — no centralized "protected route" abstraction, so every new admin-only page needs its own inline user.role === 'owner' check duplicated in both the nav (App.tsx:112-126) and the render switch (App.tsx:149-151).
+Auth & state
+frontend/src/api/api.ts:9 — JWT stored in localStorage (pm_auth_token), read on every request via interceptor. Classic XSS-exfiltration risk since anything that can inject a script can read localStorage directly (vs httpOnly cookie). High (severity elevated because there's no CSP evidenced and axios withCredentials: true alongside bearer-token-in-localStorage is a mixed pattern).
+No response interceptor exists anywhere (confirmed via grep — zero matches for response.use/401 handling in src/). A 401 from an expired/invalid token is caught individually by each page's own try/catch and shown as a generic error string (e.g. ProductManagementPage.tsx:64, SalesPage.tsx:95) rather than triggering logout+redirect to /login. Only AuthContext.tsx:37-45's initial /auth/me bootstrap clears the token on failure; a token that expires mid-session leaves the user stuck seeing "Failed to load..." errors on every page instead of being redirected to login. High
+Role gating — Consistent for nav/route level (App.tsx:112-126,149-151, all owner-only pages gate correctly). No stray admin buttons found inside staff-visible pages (Expenses/Stock Adjustments have no owner-only actions embedded). Gating relies entirely on the frontend since there's no evidence of a shared "requireRole" component — it's copy-pasted user.role === 'owner' conditionals.
+API layer
+Centralized client (api/api.ts + trivial re-export api/client.ts:1-3, which appears redundant/dead — both exist and only api.ts is imported elsewhere; client.ts seems unused). Low
+Error handling is duplicated per-call: virtually every page repeats requestError?.response?.data?.error || requestError?.message || 'fallback' (e.g. CategoriesPage.tsx:35, PurchasesPage.tsx:37,56,120, ExpensesPage.tsx:29,75, StockAdjustmentsPage.tsx:40,76, SalesHistoryPage.tsx:44,220). No shared getErrorMessage(err) helper despite the exact same expression appearing 15+ times. Medium (maintainability, not a bug)
+Loading/error/empty state consistency
+Confirms the premise: SalesPage.tsx has a loading state but no "Loading products..." message/skeleton in the product grid (only an empty-state message gated by !loading, so during load the grid is just blank — SalesPage.tsx:134-171). Medium
+ExpensesPage.tsx table has no explicit "Loading..." row — goes straight from empty to populated with only the generic "No expenses recorded yet." (ExpensesPage.tsx:158-160), no loading-specific branch unlike Products/Categories/SalesHistory which explicitly branch on loading && items.length===0. Medium
+StockAdjustmentsPage.tsx — same gap: no loading branch in the adjustments table (:159-160), and this page also visually diverges (uses <main className="app">/form-grid instead of the panel/card layout other pages moved to), suggesting it wasn't touched during the recent UI pass. Low/Medium
+DashboardPage.tsx partially has loading text baked into specific widgets (:172-173,211) but the top KPI cards just show '...' as a placeholder (:77,93,107,122) rather than a real loading indicator, and errors from 3 independent fetches all collapse into one error string that gets overwritten by whichever request fails last (:38,42,54 — three .catch(() => setError(...)) calls all write the same state var, so only the last error is visible). Medium
+BarcodeScannerPage.tsx has good state coverage (loading/error/notice) but no true "empty state" concept since it's a single-shot flow.
+Forms & validation
+Reasonably good manual validation in PurchasesPage.tsx:70-72 (qty ≥1, cost ≥0) and ExpensesPage.tsx:52-56/StockAdjustmentsPage.tsx:59-60.
+ProductManagementPage.tsx:102-118 — handleSubmit does no client-side numeric/negative guards at all: price/costPrice/stock/lowStockThreshold are Number(form.x) with no NaN or <0 check before POST/PUT; only relies on HTML required+min="0" attributes which don't block a user from typing -5 via keyboard or a non-numeric paste producing NaN sent to the API. Medium
+SalesPage.tsx — discount/gstRate inputs have no upper bound; a discount larger than subtotal is silently clamped client-side (:54) but nothing stops GST rate of e.g. 9999; also cart quantity input (:196-203) allows typing above product.stock momentarily before updateQuantity clamps it — fine, but no inline validation message shown to user when clamped. Low
+CategoriesPage.tsx — no duplicate-slug or circular-parent check client-side (e.g., selecting a category as its own descendant's parent isn't prevented in UI); relies entirely on backend. Low
+Code quality
+21 uses of : any across src/ (mostly catch (requestError: any) pattern, e.g. every page listed above), which defeats TS strictness for error handling even though tsconfig.json has "strict": true. Low
+frontend/src/components/ and frontend/src/layouts/ contain only .gitkeep — despite the README describing these as real folders, there is zero shared component/layout extraction. Every page reimplements its own panel/table/form markup with inline styles, meaning the "loading indicators added to 3 pages" fix had to be hand-applied 3 times rather than once in a shared <Table>/<LoadingRow> component — this is the root cause of finding #4. High (structural issue driving the inconsistency)
+Heavy inline style={{...}} usage throughout every page (hundreds of occurrences) coexists with styles.css — no clear convention for what belongs in CSS vs inline, making the recent CSS-only patches (.history-filters) inconsistent with e.g. SalesPage.tsx's totals block which is 100% inline-styled.
+api/client.ts is a near-pointless 3-line re-export of api/api.ts — dead indirection.
+ProductManagementPage.tsx (404 lines), SalesHistoryPage.tsx (433 lines), SalesPage.tsx (288 lines) are large single-file components mixing data-fetching, form state, table rendering, and modal/invoice logic — good candidates to split (e.g., extract invoice modal, product table row).
+Styling
+styles.css is 514 lines, uses CSS custom properties (:root tokens for colors/radius/shadow, styles.css:1-21) — a genuine design-token foundation exists, so styling isn't fully ad hoc.
+Only 2 !important occurrences, both from the recent commit chain: styles.css:388,431. The git history confirms reactive patching exactly as hypothesized: 2a11829 added .history-filters input/select to a shared selector list, 33a7d40 immediately added a separate overriding rule with min-height: 68px !important-adjacent radius, then 3abfc0d flipped it to 48px, and 9dd84fd flipped it back to 68px — three consecutive commits oscillating one value with no net design decision recorded, and !important was reached for instead of fixing selector specificity. Low severity bug-wise, but confirms process finding: styling is patched by trial-and-error rather than via the token system already in place.
+Accessibility
+Icon-only buttons largely lack aria-label: e.g. Edit/Delete icon buttons in ProductManagementPage.tsx:268,274 and CategoriesPage.tsx:167 and remove-item buttons in SalesPage.tsx:205-215/PurchasesPage.tsx:222-227 have only a title attribute (Products page) or nothing at all (Sales/Purchases) — title is not reliably announced by screen readers. Only 2 real aria-labels exist in the whole app (menu toggle App.tsx:87, password toggle LoginPage.tsx:90). Medium
+Low-stock and status indicators rely on color alone in places (e.g. DashboardPage.tsx:93 red text for low stock) though most also add text ("LOW STOCK" in ProductManagementPage.tsx:257), so this is partially mitigated.
+Forms generally do use <label> wrapping inputs correctly (good pattern throughout).
+Barcode scanner (html5-qrcode)
+BarcodeScannerPage.tsx:113-126 — cleanup on unmount does call stopScanner() and forcibly clears the #reader DOM node, which is good defensive coding against the known html5-qrcode "camera left running" issue. However stopScanner is async while the useEffect cleanup calls it via void stopScanner() — if the component unmounts while html5QrCodeRef.current.stop() is still pending, the ref reset (:107) happens after the async work resolves, by which time the component tree is gone; no functional bug observed but it's a fire-and-forget pattern that could race if the user navigates away and immediately back into the scanner page (isTransitioningRef guard mitigates most of this). Low
+Permission-denied and no-camera errors are handled with user-friendly messages (:72-85) — good coverage.
+Camera restarts automatically after handleAddToCart success (:183) but not after "Product not found" — user must manually click "Scan Again" (:318-320), which is a reasonable but inconsistent UX choice, not a bug.
+Build/config
+tsconfig.json:6 — strict: true is on, contradicting the 21 any escapes found (those are opt-outs, not evidence strict mode is off). No noUnusedLocals/noUnusedParameters, no path aliases.
+vite-env.d.ts:1 only has the default triple-slash reference — no custom ImportMetaEnv interface, so import.meta.env.VITE_API_BASE_URL (api/api.ts:4) is typed as any/string | undefined with no compile-time guarantee the env var exists or is spelled correctly elsewhere. Low
+No .env.example found alongside; base URL silently falls back to http://localhost:5000/api (api/api.ts:4) which could ship to production if VITE_API_BASE_URL isn't set at build time — worth flagging operationally though not a code bug per se. Medium
+Both agents are back with comprehensive findings. I'll now synthesize everything into a single report with a prioritized MVP plan, published as an artifact given the volume of detail. Loading the artifact design skill first.
+
+artifact-design skill
+Write C:\Users\Nakul\AppData\Local\Temp\claude\d--nakul-product-management\8e6fcc6c-d4d8-4e53-b2a6-6fd36d17754e\scratchpad\retail-erp-audit.html
+507 lines
+ArtifactC:\Users\Nakul\AppData\Local\Temp\claude\d--nakul-product-management\8e6fcc6c-d4d8-4e53-b2a6-6fd36d17754e\scratchpad\retail-erp-audit.html
+Published — Open artifact ↗
+Update Todos
+
+Run backend codebase analysis agent
+
+Run frontend codebase analysis agent
+
+Synthesize findings from both agents into a full issues list
+
+Draft prioritized MVP plan based on findings
+
+Present analysis + plan to user (as artifact)
+Retail ERP — Codebase Audit & MVP Roadmap
+
+Key takeaway up front: this codebase is already a full retail ERP (POS, purchases, payments, deliveries, expenses, stock adjustments, barcode scanning, analytics) — well past a typical "MVP" feature-wise. The real gap isn't building more, it's fixing what's already there.
+
+30 findings, most important 6 (Critical):
+
+JWT secret falls back to a hardcoded default if the env var is unset — every token becomes forgeable
+No rate limiting on login/register — open to brute force
+Seed scripts create a real admin account (admin@example.com / password123) with no production guard
+Zero test coverage anywhere in the repo
+Stock/sale/purchase writes use Mongo transactions that require a replica set, but .env.example ships a standalone Mongo URI — will hard-fail on that config
+Dashboard "Total Revenue" is computed from a different collection than actual sales revenue and the two are never reconciled — the headline number can just be wrong
+Also flagged as high-severity: JWT stored in localStorage (XSS risk), no global 401 handling, and — root-causing a lot of the frontend inconsistency — the components/ and layouts/ folders are empty, so every page hand-rolls its own table/loading/error UI (which is why loading states only got fixed on 3 of ~8 pages).
+
+The roadmap is 6 phases: stop-the-bleeding security/data fixes → lock MVP scope → fix the frontend at the root (shared components, 401 handling) → validation/data integrity → a test safety net → cleanup. Full detail, file:line citations, and effort estimates are in the artifact.

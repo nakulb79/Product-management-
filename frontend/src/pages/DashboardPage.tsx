@@ -86,11 +86,21 @@ function DashboardPage() {
           </div>
         </div>
 
-        <div className="card">
+        <button
+          type="button"
+          className="card"
+          onClick={() => {
+            window.history.pushState({}, '', '/reorder');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
+          style={{ textAlign: 'left', cursor: 'pointer', border: 'none', width: '100%' }}
+          title="View the reorder list"
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-muted)' }}>Low Stock Items</h3>
               <p style={{ margin: '0.5rem 0 0', fontSize: '1.5rem', fontWeight: 800, color: (data?.lowStock ?? 0) > 0 ? 'var(--color-danger)' : 'inherit' }}>{data?.lowStock ?? '...'}</p>
+              {(data?.lowStock ?? 0) > 0 && <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>View reorder list →</p>}
             </div>
             <div style={{ background: (data?.lowStock ?? 0) > 0 ? '#fef2f2' : '#f0fdf4', padding: '0.5rem', borderRadius: '8px', color: (data?.lowStock ?? 0) > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -98,7 +108,7 @@ function DashboardPage() {
               </svg>
             </div>
           </div>
-        </div>
+        </button>
 
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>

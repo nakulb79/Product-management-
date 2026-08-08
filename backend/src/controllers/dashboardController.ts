@@ -2,9 +2,10 @@ import { Request, Response } from 'express';
 import { Delivery } from '../models/Delivery';
 import { Payment } from '../models/Payment';
 import { Product } from '../models/Product';
+import { Sale } from '../models/Sale';
 
 export const getDashboard = async (_req: Request, res: Response) => {
-  const [products, lowStock, pendingPaymentsAgg, pendingDeliveries, completedRevenue] = await Promise.all([
+  const [products, lowStock, pendingPaymentsAgg, pendingDeliveries, salesRevenueAgg] = await Promise.all([
     Product.countDocuments(),
     Product.countDocuments({ $expr: { $lte: ['$stock', '$lowStockThreshold'] }, status: 'active' }),
     Payment.aggregate([
@@ -12,10 +13,9 @@ export const getDashboard = async (_req: Request, res: Response) => {
       { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$amount' } } }
     ]),
     Delivery.countDocuments({ deliveryStatus: 'pending' }),
-    Payment.aggregate([
-      { $match: { paymentStatus: 'completed' } },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ])
+    // Revenue must come from Sale (the actual POS record), not the unrelated Payment
+    // collection, otherwise this number won't match /api/analytics/profit or reality.
+    Sale.aggregate([{ $match: { voided: { $ne: true } } }, { $group: { _id: null, total: { $sum: '$grossRevenue' } } }])
   ]);
 
   const pendingPaymentsAmount = pendingPaymentsAgg[0]?.total ?? 0;
@@ -27,6 +27,6 @@ export const getDashboard = async (_req: Request, res: Response) => {
     pendingPayments: pendingPaymentsCount,
     pendingPaymentsAmount,
     pendingDeliveries,
-    totalRevenue: completedRevenue[0]?.total ?? 0
+    totalRevenue: salesRevenueAgg[0]?.total ?? 0
   });
 };

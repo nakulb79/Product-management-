@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { Delivery } from '../models/Delivery';
 import { Product } from '../models/Product';
+import { toErrorMessage } from '../utils/errors';
 
 export const getDeliveries = async (_req: Request, res: Response) => {
   const deliveries = await Delivery.find()
@@ -34,7 +35,7 @@ export const createDelivery = async (req: Request, res: Response) => {
     res.status(201).json(delivery[0]);
   } catch (error) {
     await session.abortTransaction();
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to create delivery' });
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to create delivery') });
   } finally {
     session.endSession();
   }

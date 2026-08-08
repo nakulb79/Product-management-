@@ -4,6 +4,9 @@ import router from './routes';
 
 const app = express();
 
+// Required for express-rate-limit to see the real client IP behind Vercel's proxy.
+app.set('trust proxy', 1);
+
 const getOrigins = (): string[] => {
   const origin = process.env.CLIENT_ORIGIN;
   if (!origin) return ['http://localhost:5173'];

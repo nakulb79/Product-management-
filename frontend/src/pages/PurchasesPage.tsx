@@ -8,6 +8,8 @@ type DraftItem = {
   costPrice: string;
 };
 
+const PAGE_SIZE = 10;
+
 function PurchasesPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -17,24 +19,42 @@ function PurchasesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const loadProducts = async () => {
     const response = await api.get<ProductListResponse>('/products', { params: { page: 1, limit: 100 } });
     setProducts(response.data.data);
   };
 
-  const loadPurchases = async () => {
-    const response = await api.get<PurchaseListResponse>('/purchases', { params: { page: 1, limit: 20 } });
+  const loadPurchases = async (targetPage: number = page) => {
+    const response = await api.get<PurchaseListResponse>('/purchases', { params: { page: targetPage, limit: PAGE_SIZE } });
     setPurchases(response.data.data);
+    setTotalPages(response.data.pagination.totalPages);
+    setPage(response.data.pagination.page);
   };
 
   const loadData = async () => {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([loadProducts(), loadPurchases()]);
+      await Promise.all([loadProducts(), loadPurchases(1)]);
     } catch (requestError: any) {
       setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load purchases module.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goToPage = async (nextPage: number) => {
+    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
+    if (clamped === page) return;
+    setLoading(true);
+    setError('');
+    try {
+      await loadPurchases(clamped);
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load purchases.');
     } finally {
       setLoading(false);
     }
@@ -44,8 +64,8 @@ function PurchasesPage() {
     const init = async () => {
       setLoading(true);
       try {
-        await Promise.all([loadProducts(), loadPurchases()]);
-        
+        await Promise.all([loadProducts(), loadPurchases(1)]);
+
         const params = new URLSearchParams(window.location.search);
         const productId = params.get('productId');
         if (productId) {
@@ -115,7 +135,7 @@ function PurchasesPage() {
       setNotice('Purchase created and stock updated successfully.');
       setSupplierName('');
       setItems([]);
-      await Promise.all([loadPurchases(), loadProducts()]);
+      await Promise.all([loadPurchases(1), loadProducts()]);
     } catch (requestError: any) {
       setError(requestError?.response?.data?.error || requestError?.message || 'Failed to create purchase.');
     } finally {
@@ -248,7 +268,7 @@ function PurchasesPage() {
         <article className="panel">
           <div className="panel-header">
             <h2 style={{ fontSize: '1.1rem', margin: 0 }}>Recent Activity</h2>
-            <button type="button" className="btn btn-light" onClick={loadPurchases} disabled={loading} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>Refresh</button>
+            <button type="button" className="btn btn-light" onClick={() => loadPurchases(page)} disabled={loading} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>Refresh</button>
           </div>
 
           <div className="table-container mobile-stack-table" style={{ marginTop: '1.5rem' }}>
@@ -280,6 +300,18 @@ function PurchasesPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="pagination-row" style={{ padding: '1rem 0 0 0', borderTop: '1px solid #f1f5f9' }}>
+            <p className="muted" style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem' }}>Page {page} of {totalPages}</p>
+            <div className="action-row">
+              <button type="button" className="btn btn-outline" onClick={() => goToPage(page - 1)} disabled={page <= 1 || loading} style={{ padding: '0.4rem 0.8rem' }}>
+                Previous
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => goToPage(page + 1)} disabled={page >= totalPages || loading} style={{ padding: '0.4rem 0.8rem' }}>
+                Next
+              </button>
+            </div>
           </div>
         </article>
       </section>

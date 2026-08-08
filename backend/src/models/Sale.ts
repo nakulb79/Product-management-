@@ -34,7 +34,11 @@ const saleSchema = new Schema(
     margin: { type: Number, required: true, default: 0 },
     paymentMethod: { type: String, enum: ['cash', 'upi', 'card'], required: true },
     notes: { type: String, default: '' },
-    createdBy: { type: Types.ObjectId, required: true, ref: 'User' }
+    createdBy: { type: Types.ObjectId, required: true, ref: 'User' },
+    voided: { type: Boolean, default: false },
+    voidedAt: { type: Date },
+    voidedBy: { type: Types.ObjectId, ref: 'User' },
+    voidReason: { type: String, default: '' }
   },
   { timestamps: true }
 );

@@ -7,7 +7,7 @@ export const getProfitSummary = async (req: AuthenticatedRequest, res: Response)
   const fromParam = req.query.from as string | undefined;
   const toParam = req.query.to as string | undefined;
 
-  const match: Record<string, unknown> = {};
+  const match: Record<string, unknown> = { voided: { $ne: true } };
 
   if (fromParam || toParam) {
     const range: Record<string, Date> = {};

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
-import { Product, ProductListResponse } from '../types';
+import { Product, ProductListResponse, Sale } from '../types';
 import { useCart } from '../context/CartContext';
+import { printInvoiceReceipt } from '../utils/invoice';
+import ScannerPanel from '../components/ScannerPanel';
 
 function SalesPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -15,6 +17,9 @@ function SalesPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lastSale, setLastSale] = useState<Sale | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [unknownBarcode, setUnknownBarcode] = useState('');
 
   const fetchProducts = async () => {
     const response = await api.get<ProductListResponse>('/products', { params: { page: 1, limit: 100 } });
@@ -50,6 +55,24 @@ function SalesPage() {
     }
   };
 
+  const handleScan = (barcode: string) => {
+    setUnknownBarcode('');
+    const match = products.find((product) => product.barcode === barcode);
+    if (!match) {
+      setError('');
+      setNotice('');
+      setUnknownBarcode(barcode);
+      return;
+    }
+    addToCart(match);
+    setNotice(`Scanned: added ${match.name} to cart.`);
+  };
+
+  const goCreateProductFromScan = () => {
+    window.history.pushState({}, '', `/products?barcode=${unknownBarcode}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
   const discountAmount = Math.max(Number(discount || 0), 0);
   const taxable = Math.max(subTotal - discountAmount, 0);
   const gstAmount = (taxable * Math.max(Number(gstRate || 0), 0)) / 100;
@@ -72,9 +95,10 @@ function SalesPage() {
     setLoading(true);
     setError('');
     setNotice('');
+    setLastSale(null);
 
     try {
-      await api.post('/sales', {
+      const response = await api.post<Sale>('/sales', {
         items: cart.map((item) => ({
           productId: item.product._id,
           quantity: item.quantity,
@@ -89,6 +113,7 @@ function SalesPage() {
       });
 
       setNotice('Sale completed successfully.');
+      setLastSale(response.data);
       resetAfterSale();
       await fetchProducts();
     } catch (requestError: any) {
@@ -96,6 +121,12 @@ function SalesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const printLastReceipt = () => {
+    if (!lastSale) return;
+    const failureMessage = printInvoiceReceipt(lastSale);
+    if (failureMessage) setError(failureMessage);
   };
 
   return (
@@ -106,16 +137,62 @@ function SalesPage() {
       </header>
 
       {error && <p className="error-text" style={{ padding: '1rem', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fee2e2' }}>{error}</p>}
-      {notice && <p className="success-text" style={{ padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7' }}>{notice}</p>}
+      {notice && (
+        <div
+          className="success-text"
+          style={{
+            padding: '1rem',
+            background: '#f0fdf4',
+            borderRadius: '8px',
+            border: '1px solid #dcfce7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            flexWrap: 'wrap'
+          }}
+        >
+          <span>{notice}</span>
+          {lastSale && (
+            <button type="button" className="btn btn-primary" onClick={printLastReceipt} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+              Print Receipt
+            </button>
+          )}
+        </div>
+      )}
 
       <section className="sales-container">
         <article className="panel">
           <div className="panel-header">
             <h2 style={{ fontSize: '1.1rem', margin: 0 }}>Select Products</h2>
-            <button type="button" className="btn btn-light" onClick={fetchProducts} disabled={loading} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>
-              Refresh
-            </button>
+            <div className="action-row">
+              <button
+                type="button"
+                className={`btn ${scanning ? 'btn-primary' : 'btn-light'}`}
+                onClick={() => { setScanning((prev) => !prev); setUnknownBarcode(''); }}
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}
+              >
+                {scanning ? 'Stop Scanning' : 'Scan Barcode'}
+              </button>
+              <button type="button" className="btn btn-light" onClick={fetchProducts} disabled={loading} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>
+                Refresh
+              </button>
+            </div>
           </div>
+
+          {scanning && (
+            <div className="panel" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', margin: '1rem 0', padding: '1rem' }}>
+              <ScannerPanel onScan={handleScan} />
+              {unknownBarcode && (
+                <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+                  <p className="warning-text" style={{ margin: '0 0 0.5rem' }}>No product found for barcode {unknownBarcode}.</p>
+                  <button type="button" className="btn btn-primary" onClick={goCreateProductFromScan} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
+                    Create New Product
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ position: 'relative', margin: '1rem 0' }}>
             <input
@@ -193,14 +270,26 @@ function SalesPage() {
                   </div>
 
                   <div className="cart-controls" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={item.product.stock}
-                      value={item.quantity}
-                      onChange={(event) => updateQuantity(item.product._id, Number(event.target.value || 1))}
-                      style={{ width: '60px', padding: '0.4rem' }}
-                    />
+                    <div className="qty-stepper" style={{ display: 'flex', alignItems: 'center', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.product._id, item.quantity - 1)}
+                        style={{ width: '32px', height: '32px', border: 'none', background: '#f8fafc', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}
+                        aria-label={`Decrease quantity of ${item.product.name}`}
+                      >
+                        −
+                      </button>
+                      <span style={{ minWidth: '32px', textAlign: 'center', fontWeight: 600, fontSize: '0.9rem' }}>{item.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.product._id, item.quantity + 1)}
+                        disabled={item.quantity >= item.product.stock}
+                        style={{ width: '32px', height: '32px', border: 'none', background: '#f8fafc', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}
+                        aria-label={`Increase quantity of ${item.product.name}`}
+                      >
+                        +
+                      </button>
+                    </div>
                     <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)' }}>× ₹{item.product.price.toFixed(0)}</span>
                     <button 
                       type="button" 

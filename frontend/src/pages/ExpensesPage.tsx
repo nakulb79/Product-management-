@@ -3,9 +3,11 @@ import api from '../api/api';
 import { Expense, ExpenseCategory, ExpenseListResponse } from '../types';
 
 const categories: ExpenseCategory[] = ['rent', 'utilities', 'salary', 'transport', 'misc', 'other'];
+const PAGE_SIZE = 15;
 
 function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [totalsByCategory, setTotalsByCategory] = useState<ExpenseListResponse['totalsByCategory']>([]);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('misc');
   const [amount, setAmount] = useState('');
@@ -14,17 +16,35 @@ function ExpensesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const loadExpenses = async () => {
-    const response = await api.get<ExpenseListResponse>('/expenses', { params: { page: 1, limit: 30 } });
+  const loadExpenses = async (targetPage: number = page) => {
+    const response = await api.get<ExpenseListResponse>('/expenses', { params: { page: targetPage, limit: PAGE_SIZE } });
     setExpenses(response.data.data);
+    setTotalsByCategory(response.data.totalsByCategory);
+    setTotalPages(response.data.pagination.totalPages);
+    setPage(response.data.pagination.page);
+  };
+
+  const goToPage = async (nextPage: number) => {
+    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
+    if (clamped === page) return;
+    setLoading(true);
+    try {
+      await loadExpenses(clamped);
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load expenses');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     const bootstrap = async () => {
       setLoading(true);
       try {
-        await loadExpenses();
+        await loadExpenses(1);
       } catch (requestError: any) {
         setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load expenses');
       } finally {
@@ -35,8 +55,8 @@ function ExpensesPage() {
   }, []);
 
   const totals = useMemo(
-    () => expenses.reduce((sum, expense) => sum + expense.amount, 0),
-    [expenses]
+    () => totalsByCategory.reduce((sum, entry) => sum + entry.amount, 0),
+    [totalsByCategory]
   );
 
   const submitExpense = async (event: FormEvent) => {
@@ -70,7 +90,7 @@ function ExpensesPage() {
       setExpenseDate('');
       setNotes('');
       setNotice('Expense added successfully.');
-      await loadExpenses();
+      await loadExpenses(1);
     } catch (requestError: any) {
       setError(requestError?.response?.data?.error || requestError?.message || 'Failed to create expense.');
     } finally {
@@ -141,7 +161,7 @@ function ExpensesPage() {
                 <div className="muted" style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>Total Expenses</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-danger)' }}>₹{totals.toFixed(0)}</div>
               </div>
-              <button type="button" className="btn btn-light" onClick={loadExpenses} disabled={loading} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>Refresh</button>
+              <button type="button" className="btn btn-light" onClick={() => loadExpenses(page)} disabled={loading} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>Refresh</button>
             </div>
           </div>
 
@@ -180,6 +200,18 @@ function ExpensesPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="pagination-row" style={{ padding: '1rem 0 0 0', borderTop: '1px solid #f1f5f9' }}>
+            <p className="muted" style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem' }}>Page {page} of {totalPages}</p>
+            <div className="action-row">
+              <button type="button" className="btn btn-outline" onClick={() => goToPage(page - 1)} disabled={page <= 1 || loading} style={{ padding: '0.4rem 0.8rem' }}>
+                Previous
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => goToPage(page + 1)} disabled={page >= totalPages || loading} style={{ padding: '0.4rem 0.8rem' }}>
+                Next
+              </button>
+            </div>
           </div>
         </article>
       </section>

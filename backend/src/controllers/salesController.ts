@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Product } from '../models/Product';
 import { Sale } from '../models/Sale';
+import { toErrorMessage } from '../utils/errors';
 
 const makeInvoiceNumber = () => `INV-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`;
 
@@ -100,7 +101,7 @@ export const createSale = async (req: AuthenticatedRequest, res: Response) => {
     res.status(201).json(sale[0]);
   } catch (error) {
     await session.abortTransaction();
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to create sale' });
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to create sale') });
   } finally {
     session.endSession();
   }
@@ -127,13 +128,48 @@ export const getSaleById = async (req: AuthenticatedRequest, res: Response) => {
   res.json(sale);
 };
 
+export const voidSale = async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const sale = await Sale.findById(req.params.id).session(session);
+    if (!sale) throw new Error('Sale not found');
+    if (sale.voided) throw new Error('This sale has already been voided');
+
+    for (const item of sale.items) {
+      const product = await Product.findById(item.productId).session(session);
+      if (product) {
+        product.stock += item.quantity;
+        await product.save({ session });
+      }
+    }
+
+    sale.voided = true;
+    sale.voidedAt = new Date();
+    sale.voidedBy = req.user.id as any;
+    sale.voidReason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    await sale.save({ session });
+
+    await session.commitTransaction();
+    res.json(sale);
+  } catch (error) {
+    await session.abortTransaction();
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to void sale') });
+  } finally {
+    session.endSession();
+  }
+};
+
 export const getDailySalesSummary = async (req: AuthenticatedRequest, res: Response) => {
   const dateParam = (req.query.date as string | undefined) || new Date().toISOString().slice(0, 10);
   const start = new Date(`${dateParam}T00:00:00.000Z`);
   const end = new Date(`${dateParam}T23:59:59.999Z`);
 
   const summary = await Sale.aggregate([
-    { $match: { createdAt: { $gte: start, $lte: end } } },
+    { $match: { createdAt: { $gte: start, $lte: end }, voided: { $ne: true } } },
     {
       $group: {
         _id: '$paymentMethod',
@@ -166,7 +202,7 @@ export const getWeeklySalesSummary = async (_req: AuthenticatedRequest, res: Res
   start.setHours(0, 0, 0, 0);
 
   const summary = await Sale.aggregate([
-    { $match: { createdAt: { $gte: start, $lte: end } } },
+    { $match: { createdAt: { $gte: start, $lte: end }, voided: { $ne: true } } },
     {
       $group: {
         _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -214,6 +250,9 @@ export const getSaleInvoice = async (req: AuthenticatedRequest, res: Response) =
     grossProfit: sale.grossProfit,
     margin: sale.margin,
     paymentMethod: sale.paymentMethod,
-    notes: sale.notes
+    notes: sale.notes,
+    voided: sale.voided,
+    voidedAt: sale.voidedAt,
+    voidReason: sale.voidReason
   });
 };

@@ -276,14 +276,26 @@ function BarcodeScannerPage() {
                 {product.stock > 0 ? (
                   <div style={{ margin: '15px 0' }}>
                     <label style={{ display: 'block', marginBottom: '5px' }}>Quantity:</label>
-                    <input 
-                      type="number" 
-                      min={1} 
-                      max={product.stock} 
-                      value={quantity} 
-                      onChange={(e) => setQuantity(Number(e.target.value))}
-                      style={{ padding: '8px', width: '80px', fontSize: '16px' }}
-                    />
+                    <div className="qty-stepper" style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                        style={{ width: '36px', height: '36px', border: 'none', background: '#f8fafc', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}
+                        aria-label="Decrease quantity"
+                      >
+                        −
+                      </button>
+                      <span style={{ minWidth: '40px', textAlign: 'center', fontWeight: 600 }}>{quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((q) => Math.min(product.stock, q + 1))}
+                        disabled={quantity >= product.stock}
+                        style={{ width: '36px', height: '36px', border: 'none', background: '#f8fafc', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}
+                        aria-label="Increase quantity"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <p className="warning-text" style={{ margin: '15px 0' }}>Product is out of stock. Please update stock to add to cart.</p>

@@ -184,6 +184,18 @@ function ProductManagementPage() {
       status: form.status
     };
 
+    const numericFields: Array<[label: string, value: number]> = [
+      ['Price', payload.price],
+      ['Cost price', payload.costPrice],
+      ['Stock', payload.stock],
+      ['Low stock threshold', payload.lowStockThreshold]
+    ];
+    const invalidField = numericFields.find(([, value]) => !Number.isFinite(value) || value < 0);
+    if (invalidField) {
+      setError(`${invalidField[0]} must be a valid number that isn't negative.`);
+      return;
+    }
+
     try {
       if (editingId) {
         await api.put(`/products/${editingId}`, payload);

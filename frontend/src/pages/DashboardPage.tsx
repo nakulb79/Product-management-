@@ -32,28 +32,42 @@ function DashboardPage() {
     const fetchDashboard = async () => {
       setLoading(true);
       setError('');
-      
-      // Fetch data independently
-      api.get<Dashboard>('/dashboard')
-        .then(res => setData(res.data))
-        .catch(() => setError('Failed to load dashboard stats'));
 
-      api.get<ProfitSummary>('/analytics/profit')
-        .then(res => setProfit(res.data))
-        .catch(() => setError('Failed to load profit analytics'));
+      const [statsResult, profitResult, weeklyResult] = await Promise.allSettled([
+        api.get<Dashboard>('/dashboard'),
+        api.get<ProfitSummary>('/analytics/profit'),
+        api.get<{ summaries: DailySalesSummary[] }>('/sales/summary/weekly')
+      ]);
 
-      api.get<{ summaries: DailySalesSummary[] }>('/sales/summary/weekly')
-        .then(res => {
-          if (res.data && res.data.summaries) {
-            const formattedChartData = res.data.summaries.map(s => ({
-              day: dayName(new Date(s.date)),
-              revenue: s.totalSales
-            }));
-            setChartData(formattedChartData.reverse());
-          }
-        })
-        .catch(() => setError('Failed to load weekly summary'))
-        .finally(() => setLoading(false));
+      const failures: string[] = [];
+
+      if (statsResult.status === 'fulfilled') {
+        setData(statsResult.value.data);
+      } else {
+        failures.push('dashboard stats');
+      }
+
+      if (profitResult.status === 'fulfilled') {
+        setProfit(profitResult.value.data);
+      } else {
+        failures.push('profit analytics');
+      }
+
+      if (weeklyResult.status === 'fulfilled') {
+        const summaries = weeklyResult.value.data?.summaries ?? [];
+        const formattedChartData = summaries.map(s => ({
+          day: dayName(new Date(s.date)),
+          revenue: s.totalSales
+        }));
+        setChartData(formattedChartData.reverse());
+      } else {
+        failures.push('weekly summary');
+      }
+
+      if (failures.length > 0) {
+        setError(`Failed to load: ${failures.join(', ')}.`);
+      }
+      setLoading(false);
     };
 
     fetchDashboard();

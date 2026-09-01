@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { User } from '../models/User';
-import { verifyJwt } from '../utils/auth';
+import { AUTH_COOKIE_NAME, verifyJwt } from '../utils/auth';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -12,6 +12,11 @@ export interface AuthenticatedRequest extends Request {
 }
 
 const extractToken = (req: Request): string | null => {
+  const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+  if (cookieToken) return cookieToken;
+
+  // Header fallback kept for non-browser API clients (e.g. scripts, Postman);
+  // the browser app itself relies solely on the httpOnly cookie set above.
   const authHeader = req.headers.authorization;
   if (!authHeader) return null;
 

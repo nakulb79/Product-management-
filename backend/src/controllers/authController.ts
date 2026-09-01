@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { User } from '../models/User';
-import { hashPassword, signJwt, verifyPassword } from '../utils/auth';
+import { AUTH_COOKIE_NAME, getJwtExpiresInSeconds, hashPassword, signJwt, verifyPassword } from '../utils/auth';
 
 const sanitizeUser = (user: any) => ({
   id: user.id,
@@ -10,6 +10,18 @@ const sanitizeUser = (user: any) => ({
   role: user.role,
   isActive: user.isActive
 });
+
+const isProd = () => process.env.NODE_ENV === 'production';
+
+const setAuthCookie = (res: Response, token: string) => {
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isProd(),
+    sameSite: isProd() ? 'none' : 'lax',
+    maxAge: getJwtExpiresInSeconds() * 1000,
+    path: '/'
+  });
+};
 
 export const register = async (req: AuthenticatedRequest, res: Response) => {
   const { name, email, password, role } = req.body;
@@ -38,14 +50,20 @@ export const register = async (req: AuthenticatedRequest, res: Response) => {
     role: userRole
   });
 
-  const token = signJwt({
-    sub: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role
-  });
+  // Only sign the requester into the new account for the bootstrap case (first
+  // user in the system). When an existing owner is creating a staff account,
+  // setting the cookie here would overwrite the owner's own session.
+  if (usersCount === 0) {
+    const token = signJwt({
+      sub: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    });
+    setAuthCookie(res, token);
+  }
 
-  res.status(201).json({ token, user: sanitizeUser(user) });
+  res.status(201).json({ user: sanitizeUser(user) });
 };
 
 export const login = async (req: AuthenticatedRequest, res: Response) => {
@@ -67,8 +85,9 @@ export const login = async (req: AuthenticatedRequest, res: Response) => {
     email: user.email,
     role: user.role
   });
+  setAuthCookie(res, token);
 
-  res.json({ token, user: sanitizeUser(user) });
+  res.json({ user: sanitizeUser(user) });
 };
 
 export const me = async (req: AuthenticatedRequest, res: Response) => {
@@ -78,4 +97,14 @@ export const me = async (req: AuthenticatedRequest, res: Response) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   res.json({ user: sanitizeUser(user) });
+};
+
+export const logout = async (_req: AuthenticatedRequest, res: Response) => {
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProd(),
+    sameSite: isProd() ? 'none' : 'lax',
+    path: '/'
+  });
+  res.json({ success: true });
 };

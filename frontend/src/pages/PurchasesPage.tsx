@@ -1,12 +1,17 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { Product, ProductListResponse, Purchase, PurchaseListResponse } from '../types';
+import { ErrorBanner, SuccessBanner } from '../components/Banner';
+import TableStatusRow from '../components/TableStatusRow';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 type DraftItem = {
   productId: string;
   quantity: string;
   costPrice: string;
 };
+
+const PAGE_SIZE = 10;
 
 function PurchasesPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -17,31 +22,66 @@ function PurchasesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const loadProducts = async () => {
     const response = await api.get<ProductListResponse>('/products', { params: { page: 1, limit: 100 } });
     setProducts(response.data.data);
   };
 
-  const loadPurchases = async () => {
-    const response = await api.get<PurchaseListResponse>('/purchases', { params: { page: 1, limit: 20 } });
+  const loadPurchases = async (targetPage: number = page) => {
+    const response = await api.get<PurchaseListResponse>('/purchases', { params: { page: targetPage, limit: PAGE_SIZE } });
     setPurchases(response.data.data);
+    setTotalPages(response.data.pagination.totalPages);
+    setPage(response.data.pagination.page);
   };
 
   const loadData = async () => {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([loadProducts(), loadPurchases()]);
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to load purchases module.');
+      await Promise.all([loadProducts(), loadPurchases(1)]);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Failed to load purchases module.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goToPage = async (nextPage: number) => {
+    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
+    if (clamped === page) return;
+    setLoading(true);
+    setError('');
+    try {
+      await loadPurchases(clamped);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Failed to load purchases.'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    const init = async () => {
+      setLoading(true);
+      try {
+        await Promise.all([loadProducts(), loadPurchases(1)]);
+
+        const params = new URLSearchParams(window.location.search);
+        const productId = params.get('productId');
+        if (productId) {
+          setDraftItem(prev => ({ ...prev, productId }));
+          setNotice('Product pre-selected from scanner.');
+        }
+      } catch (requestError) {
+        setError(getErrorMessage(requestError, 'Failed to load purchases module.'));
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
   }, []);
 
   const addItem = () => {
@@ -98,9 +138,9 @@ function PurchasesPage() {
       setNotice('Purchase created and stock updated successfully.');
       setSupplierName('');
       setItems([]);
-      await Promise.all([loadPurchases(), loadProducts()]);
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.error || requestError?.message || 'Failed to create purchase.');
+      await Promise.all([loadPurchases(1), loadProducts()]);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, 'Failed to create purchase.'));
     } finally {
       setLoading(false);
     }
@@ -113,92 +153,116 @@ function PurchasesPage() {
     typeof createdBy === 'string' ? createdBy : createdBy?.name || 'Unknown';
 
   return (
-    <main className="app">
-      <header>
+    <div className="purchases-page-wrapper">
+      <header style={{ marginBottom: '2rem' }}>
         <h1>Purchases</h1>
-        <p>Record supplier purchases to increase stock automatically.</p>
+        <p>Record stock intake from suppliers and track inventory costs.</p>
       </header>
 
-      {error && <p className="error-text">{error}</p>}
-      {notice && <p className="success-text">{notice}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {notice && <SuccessBanner>{notice}</SuccessBanner>}
 
-      <section className="purchases-layout">
+      <section className="purchases-layout" style={{ gridTemplateColumns: '1fr 420px' }}>
         <article className="panel">
-          <h2>Add Purchase</h2>
+          <div className="panel-header">
+            <h2 style={{ fontSize: '1.1rem', margin: 0 }}>Add New Purchase</h2>
+          </div>
 
-          <form onSubmit={submitPurchase} className="purchase-form">
+          <form onSubmit={submitPurchase} className="login-form" style={{ marginTop: '1.5rem' }}>
             <label>
               Supplier Name *
-              <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} required />
+              <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} required placeholder="e.g. Acme Wholesale" />
             </label>
 
-            <div className="purchase-item-row">
-              <select value={draftItem.productId} onChange={(e) => setDraftItem((prev) => ({ ...prev, productId: e.target.value }))}>
-                <option value="">Select Product</option>
-                {products.map((product) => (
-                  <option key={product._id} value={product._id}>
-                    {product.name} ({product.sku}) - current stock {product.stock}
-                  </option>
-                ))}
-              </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.5fr 1fr auto', gap: '0.75rem', alignItems: 'end', marginTop: '0.5rem' }}>
+              <label>
+                Select Product
+                <select value={draftItem.productId} onChange={(e) => setDraftItem((prev) => ({ ...prev, productId: e.target.value }))}>
+                  <option value="">Choose product...</option>
+                  {products.map((product) => (
+                    <option key={product._id} value={product._id}>
+                      {product.name} ({product.sku}) - {product.stock} in stock
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              <input
-                type="number"
-                min={1}
-                value={draftItem.quantity}
-                onChange={(e) => setDraftItem((prev) => ({ ...prev, quantity: e.target.value }))}
-                placeholder="Qty"
-              />
+              <label>
+                Qty
+                <input
+                  type="number"
+                  min={1}
+                  value={draftItem.quantity}
+                  onChange={(e) => setDraftItem((prev) => ({ ...prev, quantity: e.target.value }))}
+                />
+              </label>
 
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={draftItem.costPrice}
-                onChange={(e) => setDraftItem((prev) => ({ ...prev, costPrice: e.target.value }))}
-                placeholder="Cost Price"
-              />
+              <label>
+                Unit Cost (₹)
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={draftItem.costPrice}
+                  onChange={(e) => setDraftItem((prev) => ({ ...prev, costPrice: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </label>
 
-              <button type="button" className="btn btn-light" onClick={addItem}>
-                Add Item
+              <button type="button" className="btn btn-primary" onClick={addItem} style={{ padding: '0.625rem' }} aria-label="Add item to purchase">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
               </button>
             </div>
 
-            <table>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Qty</th>
-                  <th>Cost</th>
-                  <th>Line Total</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 ? (
-                  <tr><td colSpan={5} className="muted">No items added yet.</td></tr>
-                ) : (
-                  items.map((item) => (
-                    <tr key={item.product._id}>
-                      <td>{item.product.name} ({item.product.sku})</td>
-                      <td>{item.quantity}</td>
-                      <td>₹{item.costPrice.toFixed(2)}</td>
-                      <td>₹{(item.quantity * item.costPrice).toFixed(2)}</td>
-                      <td>
-                        <button type="button" className="btn btn-danger" onClick={() => removeItem(item.product._id)}>
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            <div className="table-container mobile-stack-table" style={{ marginTop: '1.5rem' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Qty</th>
+                    <th>Cost</th>
+                    <th>Total</th>
+                    <th style={{ textAlign: 'right' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.length === 0 ? (
+                    <TableStatusRow colSpan={5} text="No items added to this purchase yet." style={{ padding: '2rem' }} />
+                  ) : (
+                    items.map((item) => (
+                      <tr key={item.product._id}>
+                        <td data-label="Product">
+                          <div style={{ fontWeight: 600 }}>{item.product.name}</div>
+                          <div className="muted" style={{ fontSize: '0.75rem' }}>{item.product.sku}</div>
+                        </td>
+                        <td data-label="Qty">{item.quantity}</td>
+                        <td data-label="Cost">₹{item.costPrice.toFixed(0)}</td>
+                        <td data-label="Total" style={{ fontWeight: 600 }}>₹{(item.quantity * item.costPrice).toFixed(0)}</td>
+                        <td data-label="Action" style={{ textAlign: 'right' }}>
+                          <button type="button" className="btn btn-light" onClick={() => removeItem(item.product._id)} style={{ padding: '0.4rem', color: 'var(--color-danger)' }} aria-label={`Remove ${item.product.name} from purchase`}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-            <div className="purchase-actions">
-              <p><strong>Total Purchase Amount:</strong> ₹{totalAmount.toFixed(2)}</p>
-              <button type="submit" className="btn btn-primary" disabled={loading || items.length === 0}>
-                {loading ? 'Saving...' : 'Save Purchase'}
+            <div className="sale-totals" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', marginTop: '1rem' }}>
+              <div style={{ fontSize: '1.1rem' }}>
+                <span className="muted">Grand Total:</span> 
+                <strong style={{ marginLeft: '0.5rem', fontSize: '1.25rem' }}>₹{totalAmount.toFixed(0)}</strong>
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={loading || items.length === 0} style={{ padding: '0.75rem 2rem' }}>
+                {loading ? 'Processing...' : 'Save Purchase'}
               </button>
             </div>
           </form>
@@ -206,47 +270,55 @@ function PurchasesPage() {
 
         <article className="panel">
           <div className="panel-header">
-            <h2>Purchase History</h2>
-            <button type="button" className="btn btn-light" onClick={loadPurchases} disabled={loading}>Refresh</button>
+            <h2 style={{ fontSize: '1.1rem', margin: 0 }}>Recent Activity</h2>
+            <button type="button" className="btn btn-light" onClick={() => loadPurchases(page)} disabled={loading} style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>Refresh</button>
           </div>
 
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Supplier</th>
-                <th>Items</th>
-                <th>Total</th>
-                <th>Created By</th>
-              </tr>
-            </thead>
-            <tbody>
-              {purchases.length === 0 ? (
-                <tr><td colSpan={5} className="muted">No purchases yet.</td></tr>
-              ) : (
-                purchases.map((purchase) => (
-                  <tr key={purchase._id}>
-                    <td>{new Date(purchase.purchaseDate || purchase.createdAt || '').toLocaleString()}</td>
-                    <td>{purchase.supplierName}</td>
-                    <td>
-                      <ul className="history-items-list">
-                        {purchase.items.map((item, idx) => (
-                          <li key={`${purchase._id}-${idx}`}>
-                            {itemProductName(item.productId)} — {item.quantity} × ₹{item.costPrice.toFixed(2)}
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                    <td>₹{purchase.totalAmount.toFixed(2)}</td>
-                    <td>{createdByName(purchase.createdBy)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <div className="table-container mobile-stack-table" style={{ marginTop: '1.5rem' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Info</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchases.length === 0 ? (
+                  <TableStatusRow colSpan={2} text="No history yet." style={{ padding: '2rem' }} />
+                ) : (
+                  purchases.map((purchase) => (
+                    <tr key={purchase._id}>
+                      <td data-label="Info">
+                        <div style={{ fontWeight: 600 }}>{purchase.supplierName}</div>
+                        <div className="muted" style={{ fontSize: '0.75rem' }}>{new Date(purchase.purchaseDate || purchase.createdAt || '').toLocaleDateString()}</div>
+                        <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                          {purchase.items.length} items • by {createdByName(purchase.createdBy)}
+                        </div>
+                      </td>
+                      <td data-label="Amount">
+                        <div style={{ fontWeight: 700, color: 'var(--color-primary)' }}>₹{purchase.totalAmount.toFixed(0)}</div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="pagination-row" style={{ padding: '1rem 0 0 0', borderTop: '1px solid #f1f5f9' }}>
+            <p className="muted" style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem' }}>Page {page} of {totalPages}</p>
+            <div className="action-row">
+              <button type="button" className="btn btn-outline" onClick={() => goToPage(page - 1)} disabled={page <= 1 || loading} style={{ padding: '0.4rem 0.8rem' }}>
+                Previous
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => goToPage(page + 1)} disabled={page >= totalPages || loading} style={{ padding: '0.4rem 0.8rem' }}>
+                Next
+              </button>
+            </div>
+          </div>
         </article>
       </section>
-    </main>
+    </div>
   );
 }
 

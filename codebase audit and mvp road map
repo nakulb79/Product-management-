@@ -1,0 +1,230 @@
+Codebase Audit — Retail ERP / Product Management App
+
+What's actually in the box, and what it takes to call it an MVP
+MERN + TypeScript retail ERP: auth, products, categories, POS/sales, purchases, payments, deliveries, expenses, stock adjustments, barcode scanning, dashboard analytics. 30 concrete findings across backend and frontend, plus a phased plan to reach a trustworthy MVP release.
+
+6
+Critical
+7
+High
+12
+Medium
+5
+Low
+Stack snapshot
+For orientation — this is bigger than a typical "product management" MVP already. See the scope note in the roadmap below.
+
+Layer	Detail
+Backend	Node.js + Express + TypeScript + Mongoose (MongoDB), deployed to Vercel as a serverless function
+Frontend	React 18 + TypeScript + Vite, hand-rolled routing (no react-router), vanilla CSS with a token system
+Auth	Custom scrypt password hashing + hand-rolled HMAC-SHA256 JWT (no bcrypt/jsonwebtoken library)
+Modules built	Auth, Products, Categories, POS/Sales, Sales History, Purchases, Payments, Deliveries, Expenses, Stock Adjustments, Barcode Scanner, Dashboard
+Tests	None found — no test files, no Jest/Vitest config, anywhere in the repo
+Findings
+Ordered by severity. file:line citations are real, from a direct read of the source — not generic advice.
+
+Critical = blocks trusting the app with real data/money
+High = fix before wider use
+Medium = fix during MVP hardening
+Low = backlog
+Critical
+Backend · Auth
+backend/src/utils/auth.ts:18
+JWT_SECRET falls back to the hardcoded string 'change-me-in-production' if the env var is unset. If it's ever missing in a deploy (Vercel env not configured), every session token becomes forgeable — anyone can mint a valid "owner" JWT.
+
+Critical
+Backend · Auth
+backend/src/routes/authRoutes.ts
+No rate limiting on /api/auth/login or /register (no express-rate-limit in dependencies). Login is fully exposed to credential brute-forcing.
+
+Critical
+Backend · Scripts
+backend/src/scripts/seed.ts:26-28, createUser.ts:12-14
+Demo owner credentials (admin@example.com / password123) are hardcoded with no NODE_ENV guard. Running the seed script against a real database creates a live, publicly-known admin account.
+
+Critical
+Backend · Testing
+repo-wide
+Zero automated test coverage — no test files, no Jest/Vitest config anywhere. Stock, COGS, and profit math (the core of what makes this trustworthy as an inventory tool) has no safety net against regressions.
+
+Critical
+Backend · Data
+backend/.env.example:3; salesController.ts, purchasesController.ts
+Every stock-affecting write (sales, purchases, adjustments, deliveries) uses Mongoose sessions/transactions, which require a MongoDB replica set. The shipped .env.example points at a plain standalone mongodb://localhost:27017/... — against that config, every one of these writes throws.
+
+Critical
+Backend · Logic
+dashboardController.ts vs. salesController.ts
+The dashboard's "Total Revenue" is computed from the Payment collection (paymentStatus:'completed'), while sales revenue lives independently on Sale.grossRevenue. The two are never reconciled — the app's headline metric can silently disagree with actual recorded sales.
+
+High
+Frontend · Auth
+frontend/src/api/api.ts:9
+JWT is stored in localStorage, readable by any injected script — no httpOnly cookie option. Standard XSS-exfiltration exposure.
+
+High
+Frontend · Auth
+frontend/src/api (no response.use found)
+No axios response interceptor for 401s exists anywhere. An expired/invalid token just surfaces as a generic "failed to load" error on whatever page the user is on — no uniform redirect to login.
+
+High
+Frontend · Structure
+frontend/src/components, layouts (empty .gitkeep only)
+Zero shared UI components exist — every page hand-rolls its own table/loading/error markup. This is the root cause of the loading-state inconsistency across Dashboard/Expenses/Stock Adjustments (fixed on only 3 of ~8 pages so far) — the same fix has to be hand-applied per page instead of once.
+
+High
+Backend · Errors
+backend/src/app.ts:53-56
+Global error handler returns err.message directly to the client with no NODE_ENV gating — internal Mongoose/DB error text leaks to callers.
+
+High
+Backend · Security
+backend/package.json (deps)
+No helmet — the API ships with no security headers (CSP, X-Content-Type-Options, etc.).
+
+High
+Backend · Validation
+paymentsController.ts:14,19; deliveriesController.ts:44
+Mass-assignment: Payment.create(req.body) and similar update calls pass the raw request body straight into Mongoose with no field allow-list — a caller can set paymentStatus directly to "completed" on creation, bypassing any intended workflow.
+
+High
+Backend · Auth
+backend/src/utils/auth.ts:70
+JWT signature check uses plain !== string comparison instead of crypto.timingSafeEqual (unlike the password check just above it, which does this correctly) — a minor timing side-channel in otherwise-solid hand-rolled crypto.
+
+Medium
+Backend · Validation
+repo-wide controllers
+No validation library (zod/joi/express-validator) anywhere — request validation is ad hoc if checks of inconsistent depth per controller.
+
+Medium
+Backend · Data
+Product, Sale, Purchase models
+Money (price, costPrice, amount, grandTotal) is stored as plain floating-point Number everywhere rather than integer minor-units or Decimal128 — rounding error can accumulate across line items.
+
+Medium
+Backend · Data
+backend/src/models/Payment.ts
+Payment has no real relation to Sale — only a free-text orderId string. No referential integrity between a sale and its payments.
+
+Medium
+Backend · Perf
+Product.category/status; Purchase/StockAdjustment.createdAt
+Missing indexes on fields that are filtered/sorted on constantly — fine at demo scale, will show up as real latency as inventory/history grows.
+
+Medium
+Backend · Duplication
+sales/purchases/stockAdjustments/expenses/productsController.ts
+Pagination boilerplate (page/limit clamping + Promise.all([find, count])) is copy-pasted across 5 controllers with no shared helper.
+
+Medium
+Frontend · Forms
+ProductManagementPage.tsx:102-118
+Product create/edit form has no client-side numeric/negative-number guard on price/cost/stock — relies only on HTML min="0", which doesn't stop a typed negative or a pasted non-numeric value (NaN) from reaching the API.
+
+Medium
+Frontend · Routing
+App.tsx:16-29, 42-47; BarcodeScannerPage.tsx:193-217
+Two parallel navigation mechanisms coexist: App.tsx's navigate(), and the scanner page manually calling history.pushState + dispatching a synthetic popstate. Unmapped/unknown paths also silently fall back to the dashboard instead of a real 404.
+
+Medium
+Frontend · Duplication
+15+ pages
+The exact expression err.response?.data?.error || err.message || fallback is copy-pasted 15+ times across pages instead of one shared getErrorMessage() helper.
+
+Medium
+Frontend · A11y
+ProductManagementPage.tsx:268,274; SalesPage.tsx:205-215; PurchasesPage.tsx:222-227
+Icon-only edit/delete/remove-item buttons mostly lack aria-label — only 2 exist in the whole app. title alone isn't reliably announced by screen readers.
+
+Medium
+Frontend · Process
+styles.css:388,431 · git log
+Confirmed in the commit history: three consecutive commits (2a11829 → 33a7d40 → 3abfc0d → 9dd84fd) oscillated the same filter min-height/border-radius value back and forth, reaching for !important instead of the CSS custom-property token system that already exists in styles.css:1-21. Styling is being patched by trial-and-error rather than through the tokens already in place.
+
+Medium
+Frontend · Build
+frontend/src/api/api.ts:4
+VITE_API_BASE_URL silently falls back to http://localhost:5000/api with no build-time enforcement — a production build with a missing env var would ship silently pointed at localhost.
+
+Medium
+Frontend · Dashboard
+DashboardPage.tsx:38,42,54
+Three independent dashboard fetches all write errors into the same single error state variable — whichever request fails last silently overwrites any earlier error, so a real failure can go unreported.
+
+Low
+Backend · Data
+categoriesController.ts, Category.ts:19
+No cycle-check on category parent references — a category could in theory be set as its own ancestor.
+
+Low
+Backend · Cleanup
+src/services, src/middleware (.gitkeep only); src/index.ts
+Empty placeholder folders and a vestigial "legacy entrypoint" src/index.ts alongside server.ts and api/index.ts — dead structure that adds confusion for no benefit.
+
+Low
+Frontend · Cleanup
+frontend/src/api/client.ts
+A near-pointless 3-line re-export of api.ts that only adds indirection — nothing imports it distinctly.
+
+Low
+Frontend · Types
+21 occurrences, mostly `catch (err: any)`
+21 uses of : any undermine tsconfig.json's strict: true, concentrated in error-handling catch blocks.
+
+Low
+Backend · Deploy
+backend/src/config/db.ts
+Serverless Mongo connection caching has no bufferCommands:false or explicit readiness handling — possible hanging requests during cold-start connection storms at scale.
+
+Getting to an MVP
+Scope reality check: this is already a full retail ERP — Products, Categories, POS, Purchases, Payments, Deliveries, Expenses, Stock Adjustments, a barcode scanner, and dashboard analytics all exist and mostly work. That's past MVP feature-wise. The actual gap to a trustworthy MVP isn't "build more" — it's fixing the 6 critical issues above so the data and money it tracks can be trusted, then tightening the frontend structure so new pages stop repeating the same fixable bugs. The roadmap below treats "MVP" as: safe to hand to a real shop owner, not safe to leave running unattended forever.
+Phase 0 — Stop the bleeding
+~1–2 days
+These are the issues that make the app unsafe to trust with real inventory or money today. Nothing else matters until these are closed.
+
+Make the server refuse to boot if JWT_SECRET is unset or equals the default string
+Add express-rate-limit to /api/auth/login and /register
+Guard seed.ts/createUser.ts behind a NODE_ENV !== 'production' check plus an explicit confirm flag
+Pick one canonical source for "Total Revenue" (Sale or Payment) and reconcile the dashboard against it
+Document/enforce the MongoDB replica-set requirement (Atlas free tier qualifies); fail fast with a clear error if the connected instance can't run transactions
+Gate error-handler detail behind NODE_ENV so production never leaks raw DB error text
+Phase 1 — Lock the MVP scope
+~0.5 day, decision work
+A decision, not code. Confirms what ships in v1 vs. what's deferred, so Phases 2–4 aren't spent hardening modules that won't launch yet.
+
+Core loop to ship: Auth → Categories → Products/Inventory → Sales (POS) → Dashboard
+Defer-candidates worth a deliberate yes/no: Payments as a module separate from Sales, Deliveries, Stock Adjustments as its own page vs. folding into Purchases
+Barcode scanner is a real differentiator and already reasonably solid — keep it in scope
+Phase 2 — Fix the frontend at the root
+~2–3 days
+The loading-state inconsistency, the 15+ duplicated error-parsing lines, and the missing 401 handling all trace back to one cause: no shared components. Fixing that stops the same bug from needing to be fixed N times.
+
+Extract shared Table, LoadingState/EmptyState, ErrorBanner, StatusPill components into the currently-empty components/ folder
+Add an axios response interceptor: any 401 → clear auth state, redirect to /login, everywhere, uniformly
+Centralize getErrorMessage(err), replace the 15+ duplicated inline versions
+Apply the shared components to Dashboard/Expenses/Stock Adjustments to close the loading-state gap the other 3 pages already have
+Add aria-label to icon-only action buttons while touching these components anyway
+Phase 3 — Data integrity & validation
+~2 days
+Closes the mass-assignment and ad-hoc-validation gaps so the API can't be pushed into an inconsistent state by a malformed or malicious request.
+
+Introduce zod schemas per resource on the backend; reuse the shape for frontend form validation where practical
+Add explicit field allow-lists on Payment/Delivery/Product write endpoints
+Add the missing indexes (Product.category/status, Purchase/StockAdjustment.createdAt)
+Add a category-parent cycle check
+Phase 4 — Test safety net
+~2–3 days
+Without this, every future change to stock/COGS/profit logic is a guess. This is the highest-leverage phase for long-term velocity.
+
+Backend: Vitest/Jest + Supertest, using mongodb-memory-server (replica-set mode) so transaction-dependent tests actually run in CI
+Priority coverage: auth (hash/verify/JWT round-trip), stock decrement/increment races, COGS and profit math, the sale/purchase transaction rollback path
+Frontend: smoke tests for the POS checkout flow and product CRUD, at minimum
+Phase 5 — Polish & ship
+~1–2 days
+Cleanup and one deliberately-deferred item that doesn't need to block launch.
+
+Remove dead code: src/index.ts, api/client.ts, empty .gitkeep-only folders
+Fail the production build if VITE_API_BASE_URL is unset
+Defer to v1.1: migrating money fields from float Number to Decimal128/integer minor-units — real fix, but a bigger, riskier lift than anything blocking launch
+Findings compiled from a direct read of every file under backend/src and frontend/src, plus the last 24 commits. Estimates assume one developer familiar with the codebase; parallelizing backend/frontend work compresses the total to roughly 6–7 focused days.

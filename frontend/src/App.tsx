@@ -8,14 +8,20 @@ import CategoriesPage from './pages/CategoriesPage';
 import ProductManagementPage from './pages/ProductManagementPage';
 import StockAdjustmentsPage from './pages/StockAdjustmentsPage';
 import BarcodeScannerPage from './pages/BarcodeScannerPage';
+import ReorderPage from './pages/ReorderPage';
 import LoginPage from './pages/LoginPage';
+import NotFoundPage from './pages/NotFoundPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { CartProvider } from './context/CartContext';
+import { CartProvider, useCart } from './context/CartContext';
 import './styles.css';
 
-type AppRoute = '/dashboard' | '/sales' | '/sales/history' | '/products' | '/categories' | '/purchases' | '/expenses' | '/stock-adjustments' | '/scanner' | '/login';
+type AppRoute = '/dashboard' | '/sales' | '/sales/history' | '/products' | '/categories' | '/purchases' | '/expenses' | '/stock-adjustments' | '/scanner' | '/reorder' | '/login' | '/not-found';
+
+const OWNER_ONLY_ROUTES: AppRoute[] = ['/products', '/categories', '/purchases'];
 
 const normalizePath = (path: string): AppRoute => {
+  if (path === '/' || path === '') return '/dashboard';
+  if (path === '/dashboard') return '/dashboard';
   if (path === '/sales') return '/sales';
   if (path === '/sales/history') return '/sales/history';
   if (path === '/products') return '/products';
@@ -24,13 +30,17 @@ const normalizePath = (path: string): AppRoute => {
   if (path === '/expenses') return '/expenses';
   if (path === '/stock-adjustments') return '/stock-adjustments';
   if (path === '/scanner') return '/scanner';
+  if (path === '/reorder') return '/reorder';
   if (path === '/login') return '/login';
-  return '/dashboard';
+  return '/not-found';
 };
 
 function AppShell() {
   const [route, setRoute] = useState<AppRoute>(normalizePath(window.location.pathname));
+  const [menuOpen, setMenuOpen] = useState(false);
   const { user, loading, logout } = useAuth();
+  const { cart } = useCart();
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   useEffect(() => {
     const onPopState = () => setRoute(normalizePath(window.location.pathname));
@@ -42,12 +52,31 @@ function AppShell() {
     if (nextRoute === route) return;
     window.history.pushState({}, '', nextRoute);
     setRoute(nextRoute);
+    setMenuOpen(false); // Close menu on navigation
   };
 
   useEffect(() => {
     if (!loading && !user && route !== '/login') {
       window.history.replaceState({}, '', '/login');
       setRoute('/login');
+    }
+  }, [loading, user, route]);
+
+  // If the user becomes authenticated while on the /login route,
+  // move them to the dashboard so the main content appears.
+  useEffect(() => {
+    if (!loading && user && route === '/login') {
+      window.history.replaceState({}, '', '/dashboard');
+      setRoute('/dashboard');
+    }
+  }, [loading, user, route]);
+
+  // Owner-only routes are reachable by typing/bookmarking the URL directly,
+  // bypassing the nav bar (which already hides these links from non-owners).
+  useEffect(() => {
+    if (!loading && user && user.role !== 'owner' && OWNER_ONLY_ROUTES.includes(route)) {
+      window.history.replaceState({}, '', '/dashboard');
+      setRoute('/dashboard');
     }
   }, [loading, user, route]);
 
@@ -62,57 +91,114 @@ function AppShell() {
   return (
     <>
       <nav className="app-nav">
-        <button type="button" className={`btn ${route === '/dashboard' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/dashboard')}>
-          Dashboard
-        </button>
-        <button type="button" className={`btn ${route === '/scanner' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/scanner')}>
-          Scanner
-        </button>
-        <button type="button" className={`btn ${route === '/sales' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/sales')}>
-          POS
-        </button>
-        <button
-          type="button"
-          className={`btn ${route === '/sales/history' ? 'btn-primary' : 'btn-light'}`}
-          onClick={() => navigate('/sales/history')}
-        >
-          Sales History
-        </button>
-        {user.role === 'owner' && (
-          <button type="button" className={`btn ${route === '/products' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/products')}>
-            Products
+        <div className="nav-container">
+          <div className="nav-header">
+            <span className="nav-brand">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}>
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+              Retail ERP
+            </span>
+          </div>
+
+          <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
           </button>
-        )}
-        {user.role === 'owner' && (
-          <button type="button" className={`btn ${route === '/categories' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/categories')}>
-            Categories
-          </button>
-        )}
-        {user.role === 'owner' && (
-          <button type="button" className={`btn ${route === '/purchases' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/purchases')}>
-            Purchases
-          </button>
-        )}
-        <button type="button" className={`btn ${route === '/expenses' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/expenses')}>
-          Expenses
-        </button>
-        <button type="button" className={`btn ${route === '/stock-adjustments' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/stock-adjustments')}>
-          Stock Adjustments
-        </button>
-        <span className="nav-spacer" />
-        <span className="muted">{user.name} ({user.role})</span>
-        <button type="button" className="btn btn-light" onClick={logout}>Logout</button>
+
+          <div className={`nav-links ${menuOpen ? 'open' : ''}`}>
+            <button type="button" className={`btn ${route === '/dashboard' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/dashboard')}>
+              Dashboard
+            </button>
+            <button type="button" className={`btn ${route === '/scanner' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/scanner')}>
+              Scanner
+            </button>
+            <button type="button" className={`btn ${route === '/sales' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/sales')} style={{ position: 'relative' }}>
+              Sales
+              {cartCount > 0 && (
+                <span
+                  className="cart-count-badge"
+                  style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: 'var(--color-danger)',
+                    color: 'white',
+                    borderRadius: '999px',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    minWidth: '18px',
+                    height: '18px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                    lineHeight: 1
+                  }}
+                >
+                  {cartCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`btn ${route === '/sales/history' ? 'btn-primary' : 'btn-light'}`}
+              onClick={() => navigate('/sales/history')}
+            >
+              History
+            </button>
+            {user.role === 'owner' && (
+              <button type="button" className={`btn ${route === '/products' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/products')}>
+                Products
+              </button>
+            )}
+            {user.role === 'owner' && (
+              <button type="button" className={`btn ${route === '/categories' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/categories')}>
+                Categories
+              </button>
+            )}
+            {user.role === 'owner' && (
+              <button type="button" className={`btn ${route === '/purchases' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/purchases')}>
+                Purchases
+              </button>
+            )}
+            <button type="button" className={`btn ${route === '/expenses' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/expenses')}>
+              Expenses
+            </button>
+            <button type="button" className={`btn ${route === '/stock-adjustments' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/stock-adjustments')}>
+              Stock
+            </button>
+            <button type="button" className={`btn ${route === '/reorder' ? 'btn-primary' : 'btn-light'}`} onClick={() => navigate('/reorder')}>
+              Reorder
+            </button>
+
+            <div className="nav-user">
+              <span className="muted" style={{ fontSize: '0.875rem', fontWeight: 500 }}>{user.name}</span>
+              <button type="button" className="btn btn-outline" onClick={logout} style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}>
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
       </nav>
 
-      {route === '/dashboard' && <DashboardPage />}
-      {route === '/scanner' && <BarcodeScannerPage />}
-      {route === '/sales' && <SalesPage />}
-      {route === '/sales/history' && <SalesHistoryPage />}
-      {route === '/products' && user.role === 'owner' && <ProductManagementPage />}
-      {route === '/categories' && user.role === 'owner' && <CategoriesPage />}
-      {route === '/purchases' && user.role === 'owner' && <PurchasesPage />}
-      {route === '/expenses' && <ExpensesPage />}
-      {route === '/stock-adjustments' && <StockAdjustmentsPage />}
+      <main className="app">
+        {route === '/dashboard' && <DashboardPage />}
+        {route === '/scanner' && <BarcodeScannerPage />}
+        {route === '/sales' && <SalesPage />}
+        {route === '/sales/history' && <SalesHistoryPage />}
+        {route === '/products' && user.role === 'owner' && <ProductManagementPage />}
+        {route === '/categories' && user.role === 'owner' && <CategoriesPage />}
+        {route === '/purchases' && user.role === 'owner' && <PurchasesPage />}
+        {route === '/expenses' && <ExpensesPage />}
+        {route === '/stock-adjustments' && <StockAdjustmentsPage />}
+        {route === '/reorder' && <ReorderPage />}
+        {route === '/not-found' && <NotFoundPage />}
+      </main>
     </>
   );
 }

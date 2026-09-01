@@ -12,6 +12,10 @@ const boot = async () => {
     throw new Error('MONGODB_URI is required. Copy backend/.env.example to backend/.env and set it.');
   }
 
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is required. Copy backend/.env.example to backend/.env and set a strong, random value.');
+  }
+
   await connectDb(mongoUri);
 
   app.listen(PORT, () => {

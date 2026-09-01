@@ -24,5 +24,7 @@ const productSchema = new Schema(
 );
 
 productSchema.index({ name: 'text', sku: 'text', barcode: 'text', description: 'text' });
+productSchema.index({ category: 1 });
+productSchema.index({ status: 1 });
 
 export const Product = model('Product', productSchema);

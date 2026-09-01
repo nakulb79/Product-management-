@@ -17,4 +17,6 @@ const paymentSchema = new Schema(
   { timestamps: true }
 );
 
+paymentSchema.index({ paymentStatus: 1 });
+
 export const Payment = model('Payment', paymentSchema);

@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Product } from '../models/Product';
 import { Purchase } from '../models/Purchase';
+import { toErrorMessage } from '../utils/errors';
+import { buildPaginationMeta, parsePagination } from '../utils/pagination';
 
 export const createPurchase = async (req: AuthenticatedRequest, res: Response) => {
   const { supplierName, items, purchaseDate } = req.body;
@@ -56,33 +58,27 @@ export const createPurchase = async (req: AuthenticatedRequest, res: Response) =
     res.status(201).json(populated);
   } catch (error) {
     await session.abortTransaction();
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to create purchase' });
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to create purchase') });
   } finally {
     session.endSession();
   }
 };
 
 export const getPurchases = async (req: AuthenticatedRequest, res: Response) => {
-  const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const { page, limit, skip } = parsePagination(req.query);
 
   const [items, total] = await Promise.all([
     Purchase.find()
       .sort({ purchaseDate: -1, createdAt: -1 })
       .populate('items.productId', 'name sku')
       .populate('createdBy', 'name')
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit),
     Purchase.countDocuments()
   ]);
 
   res.json({
     data: items,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.max(Math.ceil(total / limit), 1)
-    }
+    pagination: buildPaginationMeta(page, limit, total)
   });
 };

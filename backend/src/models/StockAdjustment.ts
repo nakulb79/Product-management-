@@ -15,4 +15,6 @@ const stockAdjustmentSchema = new Schema(
   { timestamps: true }
 );
 
+stockAdjustmentSchema.index({ createdAt: -1 });
+
 export const StockAdjustment = model('StockAdjustment', stockAdjustmentSchema);

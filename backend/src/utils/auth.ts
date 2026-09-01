@@ -2,6 +2,11 @@ import crypto from 'crypto';
 
 const DEFAULT_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7;
 
+export const AUTH_COOKIE_NAME = 'auth_token';
+
+export const getJwtExpiresInSeconds = (): number =>
+  Number(process.env.JWT_EXPIRES_IN) || DEFAULT_EXPIRES_IN_SECONDS;
+
 type JwtPayload = {
   sub: string;
   role: 'owner' | 'staff';
@@ -15,7 +20,11 @@ const toBase64Url = (input: Buffer | string) => Buffer.from(input).toString('bas
 
 const fromBase64Url = (input: string) => Buffer.from(input, 'base64url').toString('utf8');
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'change-me-in-production';
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is not set');
+  return secret;
+};
 
 export const hashPassword = async (password: string): Promise<string> => {
   const salt = crypto.randomBytes(16);
@@ -46,7 +55,7 @@ export const verifyPassword = async (password: string, storedHash: string): Prom
 
 export const signJwt = (data: Omit<JwtPayload, 'iat' | 'exp'>): string => {
   const now = Math.floor(Date.now() / 1000);
-  const exp = now + (Number(process.env.JWT_EXPIRES_IN) || DEFAULT_EXPIRES_IN_SECONDS);
+  const exp = now + getJwtExpiresInSeconds();
 
   const header = { alg: 'HS256', typ: 'JWT' };
   const payload: JwtPayload = { ...data, iat: now, exp };
@@ -65,9 +74,18 @@ export const verifyJwt = (token: string): JwtPayload | null => {
 
   const [encodedHeader, encodedPayload, signature] = parts;
   const unsigned = `${encodedHeader}.${encodedPayload}`;
-  const expectedSig = toBase64Url(crypto.createHmac('sha256', getJwtSecret()).update(unsigned).digest());
+  const expectedSigBuf = crypto.createHmac('sha256', getJwtSecret()).update(unsigned).digest();
 
-  if (expectedSig !== signature) return null;
+  let providedSigBuf: Buffer;
+  try {
+    providedSigBuf = Buffer.from(signature, 'base64url');
+  } catch {
+    return null;
+  }
+
+  if (providedSigBuf.length !== expectedSigBuf.length || !crypto.timingSafeEqual(providedSigBuf, expectedSigBuf)) {
+    return null;
+  }
 
   const payload = JSON.parse(fromBase64Url(encodedPayload)) as JwtPayload;
   const now = Math.floor(Date.now() / 1000);

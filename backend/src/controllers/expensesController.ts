@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Expense } from '../models/Expense';
+import { buildPaginationMeta, parsePagination } from '../utils/pagination';
 
 export const createExpense = async (req: AuthenticatedRequest, res: Response) => {
   const { title, category, amount, expenseDate, notes } = req.body;
@@ -29,8 +30,7 @@ export const createExpense = async (req: AuthenticatedRequest, res: Response) =>
 };
 
 export const getExpenses = async (req: AuthenticatedRequest, res: Response) => {
-  const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const { page, limit, skip } = parsePagination(req.query);
   const fromParam = req.query.from as string | undefined;
   const toParam = req.query.to as string | undefined;
   const category = req.query.category as string | undefined;
@@ -52,7 +52,7 @@ export const getExpenses = async (req: AuthenticatedRequest, res: Response) => {
     Expense.find(query)
       .sort({ expenseDate: -1, createdAt: -1 })
       .populate('createdBy', 'name')
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit),
     Expense.countDocuments(query),
     Expense.aggregate([
@@ -69,11 +69,6 @@ export const getExpenses = async (req: AuthenticatedRequest, res: Response) => {
   res.json({
     data: items,
     totalsByCategory: totals,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.max(Math.ceil(total / limit), 1)
-    }
+    pagination: buildPaginationMeta(page, limit, total)
   });
 };

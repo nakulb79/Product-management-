@@ -20,4 +20,6 @@ const purchaseSchema = new Schema(
   { timestamps: true }
 );
 
+purchaseSchema.index({ createdAt: -1 });
+
 export const Purchase = model('Purchase', purchaseSchema);

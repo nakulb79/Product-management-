@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Product } from '../models/Product';
 import { StockAdjustment } from '../models/StockAdjustment';
+import { toErrorMessage } from '../utils/errors';
+import { buildPaginationMeta, parsePagination } from '../utils/pagination';
 
 export const createStockAdjustment = async (req: AuthenticatedRequest, res: Response) => {
   const { productId, quantityChange, reason, notes } = req.body;
@@ -51,33 +53,27 @@ export const createStockAdjustment = async (req: AuthenticatedRequest, res: Resp
     res.status(201).json(populated);
   } catch (error) {
     await session.abortTransaction();
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to create stock adjustment' });
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to create stock adjustment') });
   } finally {
     session.endSession();
   }
 };
 
 export const getStockAdjustments = async (req: AuthenticatedRequest, res: Response) => {
-  const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const { page, limit, skip } = parsePagination(req.query);
 
   const [items, total] = await Promise.all([
     StockAdjustment.find()
       .sort({ createdAt: -1 })
       .populate('productId', 'name sku stock')
       .populate('createdBy', 'name email')
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit),
     StockAdjustment.countDocuments()
   ]);
 
   res.json({
     data: items,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.max(Math.ceil(total / limit), 1)
-    }
+    pagination: buildPaginationMeta(page, limit, total)
   });
 };

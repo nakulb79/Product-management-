@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import { DailySalesSummary, Dashboard, ProfitSummary } from '../types';
+import TableStatusRow from '../components/TableStatusRow';
+import { navigateTo } from '../utils/navigation';
 
 type RevenuePoint = {
   day: string;
@@ -31,44 +33,42 @@ function DashboardPage() {
     const fetchDashboard = async () => {
       setLoading(true);
       setError('');
-      try {
-        const [dashboardRes, profitRes] = await Promise.all([
-          api.get<Dashboard>('/dashboard'),
-          api.get<ProfitSummary>('/analytics/profit')
-        ]);
 
-        const days = Array.from({ length: 7 }).map((_, index) => {
-          const date = new Date();
-          date.setDate(date.getDate() - (6 - index));
-          return date;
-        });
+      const [statsResult, profitResult, weeklyResult] = await Promise.allSettled([
+        api.get<Dashboard>('/dashboard'),
+        api.get<ProfitSummary>('/analytics/profit'),
+        api.get<{ summaries: DailySalesSummary[] }>('/sales/summary/weekly')
+      ]);
 
-        const summaries = await Promise.all(
-          days.map(async (date) => {
-            const dateParam = date.toISOString().slice(0, 10);
-            try {
-              const summaryRes = await api.get<DailySalesSummary>('/sales/summary/daily', { params: { date: dateParam } });
-              return {
-                day: dayName(date),
-                revenue: summaryRes.data.totalSales || 0
-              };
-            } catch {
-              return {
-                day: dayName(date),
-                revenue: 0
-              };
-            }
-          })
-        );
+      const failures: string[] = [];
 
-        setData(dashboardRes.data);
-        setProfit(profitRes.data);
-        setChartData(summaries);
-      } catch {
-        setError('Failed to load dashboard');
-      } finally {
-        setLoading(false);
+      if (statsResult.status === 'fulfilled') {
+        setData(statsResult.value.data);
+      } else {
+        failures.push('dashboard stats');
       }
+
+      if (profitResult.status === 'fulfilled') {
+        setProfit(profitResult.value.data);
+      } else {
+        failures.push('profit analytics');
+      }
+
+      if (weeklyResult.status === 'fulfilled') {
+        const summaries = weeklyResult.value.data?.summaries ?? [];
+        const formattedChartData = summaries.map(s => ({
+          day: dayName(new Date(s.date)),
+          revenue: s.totalSales
+        }));
+        setChartData(formattedChartData.reverse());
+      } else {
+        failures.push('weekly summary');
+      }
+
+      if (failures.length > 0) {
+        setError(`Failed to load: ${failures.join(', ')}.`);
+      }
+      setLoading(false);
     };
 
     fetchDashboard();
@@ -77,117 +77,181 @@ function DashboardPage() {
   const maxRevenue = useMemo(() => Math.max(...chartData.map((item) => item.revenue), 1), [chartData]);
 
   return (
-    <main className="app">
-      <div className="dashboard-container">
-        <h2>Dashboard</h2>
+    <div className="dashboard-container">
+      <header>
+        <h1>Dashboard</h1>
+        <p>Real-time overview of your retail operations.</p>
+      </header>
 
-        {loading && <p>Loading...</p>}
-        {error && <p className="error-text">{error}</p>}
+      {error && <p className="error-text">{error}</p>}
 
-        {data && (
-          <>
-            <div className="dashboard-cards">
-              <div className="card">
-                <h3>Total Products</h3>
-                <p>{data.products}</p>
-              </div>
-
-              <div className="card">
-                <h3>Low Stock</h3>
-                <p>{data.lowStock}</p>
-              </div>
-
-              <div className="card">
-                <h3>Pending Payments</h3>
-                <p>₹ {data.pendingPaymentsAmount.toFixed(2)}</p>
-              </div>
-
-              <div className="card">
-                <h3>Pending Deliveries</h3>
-                <p>{data.pendingDeliveries}</p>
-              </div>
+      <div className="dashboard-cards">
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-muted)' }}>Total Products</h3>
+              <p style={{ margin: '0.5rem 0 0', fontSize: '1.5rem', fontWeight: 800 }}>{data?.products ?? '...'}</p>
             </div>
-
-            <h3 className="section-title">Financial Overview</h3>
-            <div className="dashboard-cards financial-cards">
-              <div className="card">
-                <h3>Gross Revenue</h3>
-                <p>₹ {profit.totalRevenue.toFixed(2)}</p>
-              </div>
-              <div className="card">
-                <h3>COGS</h3>
-                <p>₹ {profit.totalCOGS.toFixed(2)}</p>
-              </div>
-              <div className="card">
-                <h3>Gross Profit</h3>
-                <p>₹ {profit.totalProfit.toFixed(2)}</p>
-              </div>
-              <div className="card">
-                <h3>Expenses</h3>
-                <p>₹ {profit.totalExpenses.toFixed(2)}</p>
-              </div>
-              <div className="card">
-                <h3>Net Profit</h3>
-                <p>₹ {profit.netProfit.toFixed(2)}</p>
-              </div>
-              <div className="card">
-                <h3>Margin %</h3>
-                <p>{profit.avgMargin.toFixed(2)}%</p>
-              </div>
+            <div style={{ background: '#eff6ff', padding: '0.5rem', borderRadius: '8px', color: 'var(--color-primary)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
             </div>
+          </div>
+        </div>
 
-            <div className="chart-section">
-              <h3>Revenue (Last 7 Days)</h3>
-              <div className="mini-chart">
-                {chartData.map((point) => (
-                  <div key={point.day} className="mini-chart-col">
-                    <div className="mini-chart-value">₹{point.revenue.toFixed(0)}</div>
-                    <div
-                      className="mini-chart-bar"
-                      style={{ height: `${Math.max((point.revenue / maxRevenue) * 180, 8)}px` }}
-                      title={`${point.day}: ₹${point.revenue.toFixed(2)}`}
-                    />
-                    <div className="mini-chart-label">{point.day}</div>
-                  </div>
-                ))}
-              </div>
+        <button
+          type="button"
+          className="card"
+          onClick={() => navigateTo('/reorder')}
+          style={{ textAlign: 'left', cursor: 'pointer', border: 'none', width: '100%' }}
+          title="View the reorder list"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-muted)' }}>Low Stock Items</h3>
+              <p style={{ margin: '0.5rem 0 0', fontSize: '1.5rem', fontWeight: 800, color: (data?.lowStock ?? 0) > 0 ? 'var(--color-danger)' : 'inherit' }}>{data?.lowStock ?? '...'}</p>
+              {(data?.lowStock ?? 0) > 0 && <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>View reorder list →</p>}
             </div>
+            <div style={{ background: (data?.lowStock ?? 0) > 0 ? '#fef2f2' : '#f0fdf4', padding: '0.5rem', borderRadius: '8px', color: (data?.lowStock ?? 0) > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+              </svg>
+            </div>
+          </div>
+        </button>
 
-            <div className="chart-section">
-              <h3>Top Profitable Products</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Qty Sold</th>
-                    <th>Revenue</th>
-                    <th>COGS</th>
-                    <th>Profit</th>
-                    <th>Margin</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {profit.topProfitableProducts.length === 0 ? (
-                    <tr><td colSpan={6} className="muted">No profit data yet.</td></tr>
-                  ) : (
-                    profit.topProfitableProducts.map((product) => (
-                      <tr key={product.productId}>
-                        <td>{product.productName} {product.sku ? `(${product.sku})` : ''}</td>
-                        <td>{product.totalQuantity}</td>
-                        <td>₹{product.totalRevenue.toFixed(2)}</td>
-                        <td>₹{product.totalCOGS.toFixed(2)}</td>
-                        <td>₹{product.totalProfit.toFixed(2)}</td>
-                        <td>{product.margin.toFixed(2)}%</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-muted)' }}>Pending Payments</h3>
+              <p style={{ margin: '0.5rem 0 0', fontSize: '1.5rem', fontWeight: 800 }}>{data ? `₹ ${data.pendingPaymentsAmount.toFixed(2)}` : '...'}</p>
             </div>
-          </>
-        )}
+            <div style={{ background: '#fff7ed', padding: '0.5rem', borderRadius: '8px', color: '#f97316' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="1" x2="12" y2="23"></line>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-muted)' }}>Pending Deliveries</h3>
+              <p style={{ margin: '0.5rem 0 0', fontSize: '1.5rem', fontWeight: 800 }}>{data?.pendingDeliveries ?? '...'}</p>
+            </div>
+            <div style={{ background: '#f5f3ff', padding: '0.5rem', borderRadius: '8px', color: '#8b5cf6' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="1" y="3" width="15" height="13"></rect>
+                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                <circle cx="18.5" cy="18.5" r="2.5"></circle>
+              </svg>
+            </div>
+          </div>
+        </div>
       </div>
-    </main>
+
+      <h3 className="section-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="12" y1="20" x2="12" y2="10"></line>
+          <line x1="18" y1="20" x2="18" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="16"></line>
+        </svg>
+        Financial Performance
+      </h3>
+      <div className="dashboard-cards financial-cards">
+        <div className="card">
+          <h3 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-muted)', textTransform: 'uppercase' }}>Revenue</h3>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '1.25rem', fontWeight: 700 }}>₹ {profit.totalRevenue.toFixed(0)}</p>
+        </div>
+        <div className="card">
+          <h3 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-muted)', textTransform: 'uppercase' }}>COGS</h3>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '1.25rem', fontWeight: 700 }}>₹ {profit.totalCOGS.toFixed(0)}</p>
+        </div>
+        <div className="card">
+          <h3 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-muted)', textTransform: 'uppercase' }}>Gross Profit</h3>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-success)' }}>₹ {profit.totalProfit.toFixed(0)}</p>
+        </div>
+        <div className="card">
+          <h3 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-muted)', textTransform: 'uppercase' }}>Expenses</h3>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-danger)' }}>₹ {profit.totalExpenses.toFixed(0)}</p>
+        </div>
+        <div className="card">
+          <h3 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-muted)', textTransform: 'uppercase' }}>Net Profit</h3>
+          <p style={{ margin: '0.25rem 0 0', fontSize: '1.25rem', fontWeight: 700, color: profit.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>₹ {profit.netProfit.toFixed(0)}</p>
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: '2.5rem' }}>
+        <div className="panel-header">
+          <h3 style={{ margin: 0 }}>Revenue (Last 7 Days)</h3>
+        </div>
+        <div className="mini-chart" style={{ height: '240px', alignItems: 'flex-end', paddingTop: '2rem' }}>
+          {chartData.length === 0 ? (
+            <div style={{ width: '100%', textAlign: 'center', paddingBottom: '2rem' }} className="muted">Loading chart data...</div>
+          ) : (
+            chartData.map((point) => (
+              <div key={point.day} className="mini-chart-col" style={{ flex: 1 }}>
+                <div className="mini-chart-value" style={{ fontWeight: 600 }}>₹{point.revenue.toFixed(0)}</div>
+                <div
+                  className="mini-chart-bar"
+                  style={{ 
+                    height: `${Math.max((point.revenue / maxRevenue) * 160, 8)}px`,
+                    width: '100%',
+                    maxWidth: '40px'
+                  }}
+                  title={`${point.day}: ₹${point.revenue.toFixed(2)}`}
+                />
+                <div className="mini-chart-label" style={{ fontWeight: 500 }}>{point.day}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: '2.5rem' }}>
+        <div className="panel-header">
+          <h3 style={{ margin: 0 }}>Top Profitable Products</h3>
+        </div>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Qty Sold</th>
+                <th>Revenue</th>
+                <th>Profit</th>
+                <th>Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profit.topProfitableProducts.length === 0 ? (
+                <TableStatusRow colSpan={5} text={loading ? 'Loading profit data...' : 'No profit data yet.'} style={{ padding: '2rem' }} />
+              ) : (
+                profit.topProfitableProducts.map((product) => (
+                  <tr key={product.productId}>
+                    <td style={{ fontWeight: 500 }}>{product.productName}</td>
+                    <td>{product.totalQuantity}</td>
+                    <td>₹{product.totalRevenue.toFixed(2)}</td>
+                    <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>₹{product.totalProfit.toFixed(2)}</td>
+                    <td>
+                      <span className="status-pill status-active">
+                        {product.margin.toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Category } from '../models/Category';
 import { Product } from '../models/Product';
+import { buildPaginationMeta, parsePagination } from '../utils/pagination';
 
 type ProductFilters = {
   status?: 'active' | 'inactive';
@@ -38,8 +39,7 @@ const generateUniqueSku = async (name: string): Promise<string> => {
 };
 
 export const getProducts = async (req: AuthenticatedRequest, res: Response) => {
-  const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const { page, limit, skip } = parsePagination(req.query);
   const search = (req.query.search as string | undefined)?.trim();
   const barcode = (req.query.barcode as string | undefined)?.trim();
   const status = req.query.status as 'active' | 'inactive' | undefined;
@@ -65,19 +65,14 @@ export const getProducts = async (req: AuthenticatedRequest, res: Response) => {
     Product.find(filter)
       .populate('category', 'name slug')
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit),
     Product.countDocuments(filter)
   ]);
 
   res.json({
     data: items,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.max(Math.ceil(total / limit), 1)
-    }
+    pagination: buildPaginationMeta(page, limit, total)
   });
 };
 
@@ -106,6 +101,8 @@ export const createProduct = async (req: AuthenticatedRequest, res: Response) =>
   const existingSku = await Product.findOne({ sku: resolvedSku });
   if (existingSku) return res.status(400).json({ error: 'SKU already exists' });
 
+  // validateBody already stripped req.body to the product schema's allow-list, so this
+  // spread can't be used to smuggle in createdBy or any other unlisted field.
   const product = await Product.create({ ...req.body, sku: resolvedSku, createdBy: req.user.id });
   const populated = await Product.findById(product._id).populate('category', 'name slug');
   res.status(201).json(populated);
@@ -164,6 +161,7 @@ export const updateProduct = async (req: AuthenticatedRequest, res: Response) =>
     if (existingBarcode) return res.status(400).json({ error: 'Barcode already exists' });
   }
 
+  // validateBody already stripped req.body to the product schema's allow-list.
   const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('category', 'name slug');
   if (!product) return res.status(404).json({ error: 'Product not found' });
   res.json(product);

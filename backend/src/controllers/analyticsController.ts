@@ -7,13 +7,19 @@ export const getProfitSummary = async (req: AuthenticatedRequest, res: Response)
   const fromParam = req.query.from as string | undefined;
   const toParam = req.query.to as string | undefined;
 
-  const match: Record<string, unknown> = {};
+  const match: Record<string, unknown> = { voided: { $ne: true } };
 
   if (fromParam || toParam) {
     const range: Record<string, Date> = {};
     if (fromParam) range.$gte = new Date(`${fromParam}T00:00:00.000Z`);
     if (toParam) range.$lte = new Date(`${toParam}T23:59:59.999Z`);
     match.createdAt = range;
+  } else {
+    // Default to last 30 days if no range is provided
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+    match.createdAt = { $gte: thirtyDaysAgo };
   }
 
   const expenseMatch: Record<string, unknown> = {};

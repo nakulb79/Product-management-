@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { Product } from '../models/Product';
 import { Sale } from '../models/Sale';
+import { toErrorMessage } from '../utils/errors';
+import { buildPaginationMeta, parsePagination } from '../utils/pagination';
 
 const makeInvoiceNumber = () => `INV-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`;
 
@@ -100,24 +102,23 @@ export const createSale = async (req: AuthenticatedRequest, res: Response) => {
     res.status(201).json(sale[0]);
   } catch (error) {
     await session.abortTransaction();
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to create sale' });
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to create sale') });
   } finally {
     session.endSession();
   }
 };
 
 export const getSales = async (req: AuthenticatedRequest, res: Response) => {
-  const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const { page, limit, skip } = parsePagination(req.query);
 
   const [items, total] = await Promise.all([
-    Sale.find().sort({ createdAt: -1 }).populate('createdBy', 'name').skip((page - 1) * limit).limit(limit),
+    Sale.find().sort({ createdAt: -1 }).populate('createdBy', 'name').skip(skip).limit(limit),
     Sale.countDocuments()
   ]);
 
   res.json({
     data: items,
-    pagination: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) }
+    pagination: buildPaginationMeta(page, limit, total)
   });
 };
 
@@ -127,13 +128,48 @@ export const getSaleById = async (req: AuthenticatedRequest, res: Response) => {
   res.json(sale);
 };
 
+export const voidSale = async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const sale = await Sale.findById(req.params.id).session(session);
+    if (!sale) throw new Error('Sale not found');
+    if (sale.voided) throw new Error('This sale has already been voided');
+
+    for (const item of sale.items) {
+      const product = await Product.findById(item.productId).session(session);
+      if (product) {
+        product.stock += item.quantity;
+        await product.save({ session });
+      }
+    }
+
+    sale.voided = true;
+    sale.voidedAt = new Date();
+    sale.voidedBy = req.user.id as any;
+    sale.voidReason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    await sale.save({ session });
+
+    await session.commitTransaction();
+    res.json(sale);
+  } catch (error) {
+    await session.abortTransaction();
+    res.status(400).json({ error: toErrorMessage(error, 'Unable to void sale') });
+  } finally {
+    session.endSession();
+  }
+};
+
 export const getDailySalesSummary = async (req: AuthenticatedRequest, res: Response) => {
   const dateParam = (req.query.date as string | undefined) || new Date().toISOString().slice(0, 10);
   const start = new Date(`${dateParam}T00:00:00.000Z`);
   const end = new Date(`${dateParam}T23:59:59.999Z`);
 
   const summary = await Sale.aggregate([
-    { $match: { createdAt: { $gte: start, $lte: end } } },
+    { $match: { createdAt: { $gte: start, $lte: end }, voided: { $ne: true } } },
     {
       $group: {
         _id: '$paymentMethod',
@@ -158,6 +194,42 @@ export const getDailySalesSummary = async (req: AuthenticatedRequest, res: Respo
   res.json({ date: dateParam, ...totals });
 };
 
+export const getWeeklySalesSummary = async (_req: AuthenticatedRequest, res: Response) => {
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6); // Last 7 days including today
+  start.setHours(0, 0, 0, 0);
+
+  const summary = await Sale.aggregate([
+    { $match: { createdAt: { $gte: start, $lte: end }, voided: { $ne: true } } },
+    {
+      $group: {
+        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+        totalAmount: { $sum: '$grandTotal' }
+      }
+    }
+  ]);
+
+  const summariesMap: Record<string, number> = {};
+  for (const row of summary) {
+    summariesMap[row._id] = row.totalAmount;
+  }
+
+  const summaries = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(end);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    summaries.push({
+      date: dateStr,
+      totalSales: summariesMap[dateStr] || 0
+    });
+  }
+
+  res.json({ summaries });
+};
+
 export const getSaleInvoice = async (req: AuthenticatedRequest, res: Response) => {
   const sale = await Sale.findById(req.params.id);
   if (!sale) return res.status(404).json({ error: 'Sale not found' });
@@ -178,6 +250,9 @@ export const getSaleInvoice = async (req: AuthenticatedRequest, res: Response) =
     grossProfit: sale.grossProfit,
     margin: sale.margin,
     paymentMethod: sale.paymentMethod,
-    notes: sale.notes
+    notes: sale.notes,
+    voided: sale.voided,
+    voidedAt: sale.voidedAt,
+    voidReason: sale.voidReason
   });
 };
